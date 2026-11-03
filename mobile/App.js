@@ -7,6 +7,29 @@ import {empty, money, numeric, change, saveOrder, remove, total, report} from '.
 
 const labels = {clients:'Clientes',categories:'Categorias',products:'Produtos',orders:'Pedidos',billing:'Faturamento',expenses:'Despesas',reports:'Relatórios'};
 const storageKey = 'agrotile-v1';
+const seller = {
+    name: 'Dionatan Stadler de Freitas',
+    phone: '(41) 9 9722-6198',
+    city: 'Campo Largo - PR',
+};
+const clientFields = [
+    ['legalName', 'Nome completo / razão social'],
+    ['tradeName', 'Nome fantasia'],
+    ['document', 'CPF / CNPJ'],
+    ['stateRegistration', 'Inscrição estadual (ou ISENTO)'],
+    ['municipalRegistration', 'Inscrição municipal'],
+    ['contactName', 'Pessoa de contato'],
+    ['phone', 'Telefone / WhatsApp'],
+    ['email', 'E-mail para recebimento da nota'],
+    ['postalCode', 'CEP'],
+    ['address', 'Endereço / logradouro'],
+    ['addressNumber', 'Número (ou S/N)'],
+    ['complement', 'Complemento'],
+    ['district', 'Bairro'],
+    ['city', 'Município'],
+    ['state', 'UF'],
+    ['notes', 'Observações do cadastro'],
+];
 const escape = value => String(value).replace(/[&<>"']/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
 function Button({title,onPress}) { return <Pressable style={s.button} onPress={onPress}><Text style={s.buttonText}>{title}</Text></Pressable>; }
 function Field({label,value,onChangeText,numeric:decimal}) { return <View><Text style={s.label}>{label}</Text><TextInput style={s.input} value={String(value ?? '')} onChangeText={onChangeText} keyboardType={decimal ? 'decimal-pad' : 'default'}/></View>; }
@@ -64,6 +87,14 @@ export default function App() {
             }
             if (!draft.name?.trim()) throw Error('Informe o nome ou descrição.');
             const record = {...draft,name:draft.name.trim()};
+            if (collection === 'clients') {
+                for (const [key] of clientFields) record[key] = String(draft[key] ?? '').trim();
+                record.state = record.state.toUpperCase();
+                record.needsInvoice = draft.needsInvoice ?? false;
+                if (record.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(record.email)) throw Error('Confira o e-mail do cliente.');
+                if (record.state && !/^(AC|AL|AP|AM|BA|CE|DF|ES|GO|MA|MT|MS|MG|PA|PB|PR|PE|PI|RJ|RN|RS|RO|RR|SC|SP|SE|TO)$/.test(record.state)) throw Error('Informe uma UF válida, como PR.');
+                if (record.postalCode && !/^\d{5}-?\d{3}$/.test(record.postalCode)) throw Error('Informe o CEP com 8 dígitos.');
+            }
             if (collection === 'products') {
                 if (!state.categories.some(c => c.id === draft.categoryId)) throw Error('Selecione uma categoria.');
                 Object.assign(record,{stock:numeric(draft.stock),price:numeric(draft.price,true),cost:numeric(draft.cost,true)});
@@ -81,7 +112,12 @@ export default function App() {
     async function pdf(order) {
         try {
             const client = data.clients.find(c => c.id === order.clientId);
-            const html = '<html><meta charset="utf-8"><body style="font-family:Arial;padding:30px"><h1>AgroTile Representações</h1><h2>Pedido #' + order.id + '</h2><p>' + escape(client?.name) + '</p><p>' + escape(client?.address ?? '') + '</p><p>' + new Date(order.date).toLocaleDateString('pt-BR') + '</p><table width="100%"><tr><th>Produto</th><th>Qtd.</th><th>Unitário</th><th>Total</th></tr>' + order.items.map(i => '<tr><td>' + escape(i.name) + '</td><td>' + i.quantity + '</td><td>' + money(i.price) + '</td><td>' + money(i.price*i.quantity) + '</td></tr>').join('') + '</table><h2>Total ' + money(order.final ?? total(order)) + '</h2><p>' + escape(order.payment ?? 'Pedido aguardando entrega') + '</p></body></html>';
+            const clientDetails = clientFields
+                .filter(([key]) => key !== 'notes' && client?.[key])
+                .map(([key,label]) => '<p><strong>' + escape(label) + '</strong> · ' + escape(client[key]) + '</p>')
+                .join('');
+            const sellerDetails = '<p><strong>Vendedor</strong> · ' + escape(seller.name) + '<br>Telefone · ' + escape(seller.phone) + '<br>' + escape(seller.city) + '</p>';
+            const html = '<html><meta charset="utf-8"><body style="font-family:Arial;padding:30px"><h1>AgroTile Representações</h1><h2>Pedido #' + order.id + '</h2><p>' + escape(client?.name) + '</p>' + clientDetails + '<p>' + (client?.needsInvoice ? 'Cliente solicita nota fiscal' : '') + '</p><p>' + new Date(order.date).toLocaleDateString('pt-BR') + '</p><table width="100%"><tr><th>Produto</th><th>Qtd.</th><th>Unitário</th><th>Total</th></tr>' + order.items.map(i => '<tr><td>' + escape(i.name) + '</td><td>' + i.quantity + '</td><td>' + money(i.price) + '</td><td>' + money(i.price*i.quantity) + '</td></tr>').join('') + '</table><h2>Total ' + money(order.final ?? total(order)) + '</h2><p>' + escape(order.payment ?? 'Pedido aguardando entrega') + '</p><hr>' + sellerDetails + '</body></html>';
             const file = await Print.printToFileAsync({html});
             await Sharing.shareAsync(file.uri,{mimeType:'application/pdf',dialogTitle:'Enviar pedido por WhatsApp',UTI:'com.adobe.pdf'});
         } catch(error) { Alert.alert('Compartilhar PDF',error.message); }
@@ -102,12 +138,20 @@ export default function App() {
     const weekly = report(data,weekStart.toISOString(),weekEnd.toISOString());
     return <SafeAreaView style={s.page}><ScrollView contentContainerStyle={s.content}>
         <Text style={s.brand}>AgroTile</Text><Text style={s.subtitle}>Representações</Text>
+        <View style={s.card}><Text style={s.title}>Vendedor</Text><Text>{seller.name}</Text><Text>Telefone · {seller.phone}</Text><Text>{seller.city}</Text></View>
         <View style={s.row}>{Object.entries(labels).map(([key,label]) => <Button key={key} title={label} onPress={() => {setTab(key);setHistory(null);}}/>)}</View>
         <Text style={s.heading}>{labels[tab]}</Text>
         {!['reports','billing'].includes(tab) && <Button title="Adicionar" onPress={() => open(tab)}/>}
         {records.map(record => <View key={record.id} style={s.card}>
             <Text style={s.title}>{collection === 'orders' ? '#' + record.id + ' · ' + data.clients.find(c => c.id === record.clientId)?.name : record.name}</Text>
             {collection === 'orders' && <><Text>{new Date(record.date).toLocaleDateString('pt-BR')} · {money(record.final ?? total(record))}</Text>{record.items.map((i,index) => <Text key={index}>{i.quantity} × {i.name} · {money(i.price)}</Text>)}<Text>{record.payment}</Text><Button title="Enviar por WhatsApp · PDF" onPress={() => pdf(record)}/>{record.final === undefined && <Button title="Pedido entregue" onPress={() => open('billing',record)}/>}</>}
+            {collection === 'clients' && <View>
+                {!!record.legalName && <Text>{record.legalName}</Text>}
+                {!!record.document && <Text>CPF / CNPJ · {record.document}</Text>}
+                {!!record.phone && <Text>{record.phone}</Text>}
+                {!!record.city && <Text>{record.city} {record.state}</Text>}
+                {record.needsInvoice && <Text>Solicita nota fiscal</Text>}
+            </View>}
             {collection === 'products' && <Text>{record.stock} unidades · Venda {money(record.price)} · Custo {money(record.cost)}</Text>}
             {collection === 'expenses' && <Text>{money(record.amount)} · {new Date(record.date).toLocaleDateString('pt-BR')}</Text>}
             <View style={s.row}><Button title="Editar" onPress={() => open(collection,record)}/>{tab === 'billing' && <Button title="Editar pagamento" onPress={() => open('billing',record)}/>}<Button title="Excluir" onPress={() => drop(collection,record.id)}/>{collection === 'clients' && <Button title="Histórico" onPress={() => setHistory(record.id)}/>}</View>
@@ -123,8 +167,13 @@ export default function App() {
     </ScrollView>
     <Modal visible={!!editor} onRequestClose={() => setEditor(null)} animationType="slide"><SafeAreaView style={s.page}><ScrollView contentContainerStyle={s.content}>
         <Text style={s.heading}>{labels[editor?.collection]}</Text>
-        {editor && !['orders','billing'].includes(editor.collection) && <Field label="Nome / descrição" value={draft.name} onChangeText={v => update('name',v)}/>}
-        {editor?.collection === 'clients' && <><Field label="Telefone / WhatsApp" value={draft.phone} onChangeText={v => update('phone',v)}/><Field label="Endereço" value={draft.address} onChangeText={v => update('address',v)}/></>}
+        {editor && !['orders','billing'].includes(editor.collection) && <Field label={editor.collection === 'clients' ? 'Nome de identificação do cliente' : 'Nome / descrição'} value={draft.name} onChangeText={v => update('name',v)}/>}
+        {editor?.collection === 'clients' && <>
+            <Text style={s.title}>Dados para faturamento</Text>
+            <Text>Preencha os dados disponíveis para encaminhar ao responsável pela emissão da nota fiscal.</Text>
+            <Select label="Solicita nota fiscal?" entries={[{id:false,name:'Não'},{id:true,name:'Sim'}]} value={draft.needsInvoice ?? false} onChange={v => update('needsInvoice',v)}/>
+            {clientFields.map(([key,label]) => <Field key={key} label={label} value={draft[key]} onChangeText={v => update(key,v)}/>)}
+        </>}
         {editor?.collection === 'products' && <><Select label="Categoria" entries={data.categories} value={draft.categoryId} onChange={v => update('categoryId',v)}/>{[['stock','Estoque disponível'],['cost','Custo unitário (R$)'],['price','Preço de venda (R$)']].map(([key,label]) => <Field key={key} label={label} numeric value={draft[key]} onChangeText={v => update(key,v)}/>)}</>}
         {editor?.collection === 'expenses' && <><Field label="Valor (R$)" numeric value={draft.amount} onChangeText={v => update('amount',v)}/><Field label="Data (AAAA-MM-DD)" value={draft.expenseDate} onChangeText={v => update('expenseDate',v)}/></>}
         {editor?.collection === 'billing' && <><Field label="Valor final (R$)" numeric value={draft.final} onChangeText={v => update('final',v)}/><Field label="Forma de pagamento" value={draft.payment} onChangeText={v => update('payment',v)}/></>}
@@ -163,4 +212,3 @@ const s = StyleSheet.create({
     choice:{padding:10,backgroundColor:'#dce8dd',borderRadius:6,marginVertical:4},
     selected:{backgroundColor:'#246140'}
 });
-
