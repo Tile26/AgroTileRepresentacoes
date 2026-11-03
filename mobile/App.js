@@ -46,7 +46,7 @@ export default function App() {
     function open(collection,record = {}) {
         const draft = {...record};
         if (collection === 'products') Object.assign(draft,{price:String((record.price ?? 0)/100),cost:String((record.cost ?? 0)/100)});
-        if (collection === 'expenses') Object.assign(draft,{amount:String((record.amount ?? 0)/100)});
+        if (collection === 'expenses') Object.assign(draft,{amount:String((record.amount ?? 0)/100),expenseDate:(record.date ?? new Date().toISOString()).slice(0,10)});
         if (collection === 'billing') Object.assign(draft,{final:String((record.final ?? total(record))/100),payment:record.payment ?? 'Pix'});
         if (collection === 'orders') draft.items = (record.items ?? []).map(i => ({...i}));
         setEditor({collection,draft});
@@ -68,7 +68,11 @@ export default function App() {
                 if (!state.categories.some(c => c.id === draft.categoryId)) throw Error('Selecione uma categoria.');
                 Object.assign(record,{stock:numeric(draft.stock),price:numeric(draft.price,true),cost:numeric(draft.cost,true)});
             }
-            if (collection === 'expenses') Object.assign(record,{amount:numeric(draft.amount,true),date:draft.date ?? new Date().toISOString()});
+            if (collection === 'expenses') {
+                const date = new Date(draft.expenseDate + 'T12:00:00');
+                if (Number.isNaN(date.getTime()) || date.toISOString().slice(0,10) !== draft.expenseDate) throw Error('Informe uma data válida no formato AAAA-MM-DD.');
+                Object.assign(record,{amount:numeric(draft.amount,true),date:date.toISOString()});
+            }
             const index = state[collection].findIndex(r => r.id === record.id);
             if (index < 0) state[collection].push({...record,id:state.nextId++});
             else state[collection][index] = record;
@@ -122,7 +126,7 @@ export default function App() {
         {editor && !['orders','billing'].includes(editor.collection) && <Field label="Nome / descrição" value={draft.name} onChangeText={v => update('name',v)}/>}
         {editor?.collection === 'clients' && <><Field label="Telefone / WhatsApp" value={draft.phone} onChangeText={v => update('phone',v)}/><Field label="Endereço" value={draft.address} onChangeText={v => update('address',v)}/></>}
         {editor?.collection === 'products' && <><Select label="Categoria" entries={data.categories} value={draft.categoryId} onChange={v => update('categoryId',v)}/>{[['stock','Estoque disponível'],['cost','Custo unitário (R$)'],['price','Preço de venda (R$)']].map(([key,label]) => <Field key={key} label={label} numeric value={draft[key]} onChangeText={v => update(key,v)}/>)}</>}
-        {editor?.collection === 'expenses' && <Field label="Valor (R$)" numeric value={draft.amount} onChangeText={v => update('amount',v)}/>}
+        {editor?.collection === 'expenses' && <><Field label="Valor (R$)" numeric value={draft.amount} onChangeText={v => update('amount',v)}/><Field label="Data (AAAA-MM-DD)" value={draft.expenseDate} onChangeText={v => update('expenseDate',v)}/></>}
         {editor?.collection === 'billing' && <><Field label="Valor final (R$)" numeric value={draft.final} onChangeText={v => update('final',v)}/><Field label="Forma de pagamento" value={draft.payment} onChangeText={v => update('payment',v)}/></>}
         {editor?.collection === 'orders' && <>
             <Select label="Cliente" entries={data.clients} value={draft.clientId} onChange={v => update('clientId',v)}/>
@@ -159,3 +163,4 @@ const s = StyleSheet.create({
     choice:{padding:10,backgroundColor:'#dce8dd',borderRadius:6,marginVertical:4},
     selected:{backgroundColor:'#246140'}
 });
+

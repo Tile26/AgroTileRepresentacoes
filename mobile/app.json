@@ -6,7 +6,19 @@
     "version": "1.0.0",
     "orientation": "portrait",
     "userInterfaceStyle": "light",
-    "android": {"package": "br.com.agrotile.representacoes"},
-    "runtimeVersion": {"policy": "appVersion"}
+    "android": {
+      "package": "br.com.agrotile.representacoes"
+    },
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "extra": {
+      "eas": {
+        "projectId": "e6c32f7a-4de1-4ab5-9fc4-86997398cf30"
+      }
+    },
+    "updates": {
+      "url": "https://u.expo.dev/e6c32f7a-4de1-4ab5-9fc4-86997398cf30"
+    }
   }
 }
