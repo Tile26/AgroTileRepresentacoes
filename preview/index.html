@@ -14,14 +14,14 @@ label{display:block;margin:10px 0}input,select,button{box-sizing:border-box;padd
 <main>
 <section><h2>Clientes</h2><form id="customer"><label>Nome<input name="name" required></label><button>Cadastrar cliente</button></form><ul id="customers"></ul></section>
 <section><h2>Novo pedido</h2><form id="order"><label>Cliente<select name="client"></select></label><label>Produto<select name="product"></select></label><label>Quantidade<input name="quantity" type="number" min="1" value="1" required></label><label>Preço unitário (R$)<input name="price" type="number" min="0" step=".01" required></label><button>Salvar pedido</button></form><p id="notice" role="status"></p></section>
-<section><h2>Estoque</h2><ul id="stock"></ul></section>
+<section><h2>Estoque</h2><button onclick="editCategory()">Nova categoria</button> <button onclick="editProduct()">Novo produto</button><div id="categories"></div><div id="stock"></div></section>
 <section><h2>Pedidos</h2><div id="pending"></div></section>
 <section><h2>Faturamento</h2><div id="billed"></div></section>
 </main>
 <script>
 const clients = ['Fazenda Horizonte'];
 const products = [{name:'Sementes de milho', stock:20, price:12000}, {name:'Adubo orgânico', stock:12, price:8500}];
-const orders = [];
+const orders = []; const categories = ['Insumos']; products.forEach(p => p.category = categories[0]); let nextOrder = 1;
 const byId = id => document.getElementById(id);
 const customer = byId('customer');
 const order = byId('order');
@@ -35,19 +35,38 @@ function list(id, items) {
     }));
 }
 function updatePrice() {
-    fields.price.value = (products[fields.product.value].price / 100).toFixed(2);
+    const product = products[fields.product.value]; fields.price.value = product ? (product.price / 100).toFixed(2) : '';
 }
 function render() {
     const selected = fields.client.value;
     fields.client.replaceChildren(...clients.map((name, index) => new Option(name,index)));
     if (selected !== '') fields.client.value = selected;
-    list('customers',clients);
-    list('stock',products.map(p => p.name + ' · ' + p.stock + ' unidades'));
+    records('customers', clients, name => name, editClient, index => {
+        if (orders.some(o => o.client === clients[index])) throw Error('Exclua primeiro os pedidos e faturamentos deste cliente.');
+        clients.splice(index, 1);
+    });
+    records('categories', categories, name => name, editCategory, index => {
+        if (products.some(p => p.category === categories[index])) throw Error('Mova os produtos para outra categoria antes de excluir.');
+        categories.splice(index, 1);
+    });
+    records('stock', products, p => p.name + ' · ' + p.category + ' · ' + p.stock + ' unidades', editProduct, index => {
+        if (orders.some(o => o.item === products[index])) throw Error('Exclua primeiro os pedidos e faturamentos deste produto.');
+        products.splice(index, 1);
+    });
+    const selectedProduct = fields.product.value;
+    fields.product.replaceChildren(...products.map((p,i) => new Option(p.name,i)));
+    if (products[selectedProduct]) fields.product.value = selectedProduct;
+    order.querySelector('button').disabled = !products.length || !clients.length;
+
     byId('pending').replaceChildren();
     byId('billed').replaceChildren();
     for (const entry of orders) {
         const row = document.createElement('article');
         row.textContent = '#' + entry.id + ' · ' + entry.client + ' · ' + entry.quantity + ' × ' + entry.product + ' · ' + money(entry.final ?? entry.total);
+        actions(row, () => editOrder(entry), () => {
+            entry.item.stock += entry.quantity;
+            orders.splice(orders.indexOf(entry), 1);
+        }, entry.final === undefined ? 'pedido' : 'faturamento');
         if (entry.final !== undefined) {
             row.append(' · ' + entry.payment);
             byId('billed').append(row);
@@ -69,7 +88,7 @@ function render() {
 customer.onsubmit = event => {
     event.preventDefault();
     const name = customer.elements.namedItem('name').value.trim();
-    if (!name) return;
+    if (!name) return; if (clients.includes(name)) { alert('Este nome já está cadastrado.'); return; }
     clients.push(name);
     customer.reset();
     render();
@@ -86,11 +105,106 @@ order.onsubmit = event => {
         return;
     }
     product.stock -= quantity;
-    orders.push({id:orders.length + 1,client:clients[fields.client.value],product:product.name,quantity,total:quantity * Math.round(fields.price.valueAsNumber * 100)});
+    orders.push({id:nextOrder++,item:product,client:clients[fields.client.value],product:product.name,quantity,total:quantity * Math.round(fields.price.valueAsNumber * 100)});
     byId('notice').textContent = 'Pedido salvo. Estoque atualizado.';
     render();
 };
-updatePrice();
+function input(label, value = '') {
+    const response = prompt(label, value);
+    if (response === null) throw Error('');
+    if (!response.trim()) throw Error('Preencha o campo.');
+    return response.trim();
+}
+function number(label, value, whole = false, minimum = 0) {
+    const raw = input(label, value);
+    const parsed = Number(raw.replace(',', '.'));
+    if (!/^\d+(?:[.,]\d{1,2})?$/.test(raw) || !Number.isFinite(parsed) || parsed < minimum || (whole && !Number.isInteger(parsed))) {
+        throw Error('Informe um número válido.');
+    }
+    return parsed;
+}
+function apply(change) {
+    try { change(); render(); updatePrice(); }
+    catch (error) { if (error.message) alert(error.message); }
+}
+function actions(row, edit, remove, label) {
+    for (const [caption, handler] of [['Editar', edit], ['Excluir', () => {
+        if (confirm('Confirma a exclusão deste registro (' + label + ')?')) apply(remove);
+    }]]) {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.textContent = caption;
+        button.onclick = handler;
+        row.append(' ', button);
+    }
+}
+function records(id, entries, description, edit, remove) {
+    byId(id).replaceChildren(...entries.map((entry, index) => {
+        const row = document.createElement(id === 'customers' ? 'li' : 'article');
+        row.textContent = description(entry);
+        actions(row, () => edit(index), () => remove(index), id === 'customers' ? 'cliente' : id === 'categories' ? 'categoria' : 'produto');
+        return row;
+    }));
+}
+function uniqueName(entries, current, label) {
+    const name = input(label, current);
+    if (name !== current && entries.includes(name)) throw Error('Este nome já está cadastrado.');
+    return name;
+}
+function editClient(index) {
+    apply(() => {
+        const previous = clients[index];
+        const name = uniqueName(clients, previous, 'Nome do cliente');
+        clients[index] = name;
+        orders.filter(o => o.client === previous).forEach(o => o.client = name);
+    });
+}
+function editCategory(index) {
+    apply(() => {
+        const previous = categories[index];
+        const name = uniqueName(categories, previous, 'Nome da categoria');
+        if (index === undefined) categories.push(name);
+        else {
+            categories[index] = name;
+            products.filter(p => p.category === previous).forEach(p => p.category = name);
+        }
+    });
+}
+function editProduct(index) {
+    apply(() => {
+        if (!categories.length) throw Error('Cadastre uma categoria primeiro.');
+        const product = products[index];
+        const name = uniqueName(products.map(p => p.name), product?.name, 'Nome do produto');
+        const category = input('Categoria disponível: ' + categories.join(', '), product?.category ?? categories[0]);
+        if (!categories.includes(category)) throw Error('Selecione uma categoria cadastrada.');
+        const stock = number('Estoque disponível', product?.stock ?? 0, true);
+        const price = Math.round(number('Preço unitário (R$)', (product?.price ?? 0) / 100) * 100);
+        if (product) Object.assign(product, {name, category, stock, price});
+        else products.push({name, category, stock, price});
+    });
+}
+function editOrder(entry) {
+    apply(() => {
+        const client = input('Cliente cadastrado: ' + clients.join(', '), entry.client);
+        if (!clients.includes(client)) throw Error('Selecione um cliente cadastrado.');
+        const productName = input('Produto cadastrado: ' + products.map(p => p.name).join(', '), entry.item.name);
+        const item = products.find(p => p.name === productName);
+        if (!item) throw Error('Selecione um produto cadastrado.');
+        const quantity = number('Quantidade', entry.quantity, true, 1);
+        const available = item.stock + (item === entry.item ? entry.quantity : 0);
+        if (quantity > available) throw Error('Quantidade acima do estoque disponível.');
+        const unit = Math.round(number('Preço unitário (R$)', entry.total / entry.quantity / 100) * 100);
+        const billing = entry.final === undefined ? {} : {
+            payment: input('Forma de pagamento', entry.payment),
+            final: Math.round(number('Valor final (R$)', entry.final / 100) * 100)
+        };
+        entry.item.stock += entry.quantity;
+        item.stock -= quantity;
+        Object.assign(entry, {client, item, product: item.name, quantity, total: quantity * unit}, billing);
+    });
+}
 render();
+updatePrice();
 </script>
 </html>
+
