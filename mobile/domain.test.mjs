@@ -56,3 +56,28 @@ assert.equal(dashboard(cleared,now).pendingCount,0);
 assert.equal(dashboard(cleared,now).stockValue,1400);
 assert.equal(customerActivity(empty(),now).length,0);
 console.log('Painel mensal, pedidos pendentes e dias sem comprar verificados.');
+
+const {packingList} = await import('data:text/javascript;base64,' + Buffer.from(source).toString('base64'));
+const manifestState = empty();
+manifestState.clients = [{id:1,name:'Cliente A'},{id:2,name:'Cliente B'}];
+manifestState.products = [{id:10,name:'Produto A',categoryId:5},{id:11,name:'Produto B',categoryId:6}];
+manifestState.orders = [
+    {id:1,clientId:1,date:now.toISOString(),items:[{productId:10,quantity:2},{productId:11,quantity:7},{productId:10,quantity:3}]},
+    {id:2,clientId:2,date:now.toISOString(),items:[{productId:10,quantity:4}]},
+    {id:3,clientId:1,final:0,items:[{productId:10,quantity:100}]},
+];
+const manifest = packingList(manifestState,5);
+assert.equal(manifest.quantity,9);
+assert.equal(manifest.orders.length,2);
+assert.equal(manifest.orders[0].items.length,1);
+assert.equal(manifest.orders[0].items[0].quantity,5);
+assert.equal(manifest.orders[1].client,'Cliente B');
+assert.equal(packingList(manifestState,6).quantity,7);
+assert.equal(packingList(manifestState,5,11).quantity,0);
+assert.equal(packingList(manifestState,5,10).quantity,9);
+assert.equal(packingList(manifestState,null).orders.length,0);
+manifestState.orders[0].final = 1;
+assert.equal(packingList(manifestState,5).quantity,4);
+manifestState.orders.splice(1,1);
+assert.equal(packingList(manifestState,5).orders.length,0);
+console.log('Romaneio por categoria/produto, agrupamento e retirada de entregues verificados.');

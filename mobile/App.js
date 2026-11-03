@@ -3,9 +3,9 @@ import {Alert, SafeAreaView, ScrollView, View, Text, TextInput, Pressable, Modal
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
-import {empty, money, numeric, change, saveOrder, remove, total, report, dashboard, customerActivity} from './domain';
+import {empty, money, numeric, change, saveOrder, remove, total, report, dashboard, customerActivity, packingList} from './domain';
 
-const labels = {clients:'Clientes',categories:'Categorias',products:'Produtos',orders:'Pedidos',billing:'Faturamento',expenses:'Despesas',reports:'Relatórios'};
+const labels = {clients:'Clientes',categories:'Categorias',products:'Produtos',orders:'Pedidos',billing:'Faturamento',expenses:'Despesas',reports:'Relatórios',packing:'Romaneio'};
 const storageKey = 'agrotile-v1';
 const seller = {
     name: 'Dionatan Stadler de Freitas',
@@ -43,6 +43,8 @@ export default function App() {
     const [editor,setEditor] = useState(null);
     const [history,setHistory] = useState(null);
     const [showActivity,setShowActivity] = useState(false);
+    const [packingCategory,setPackingCategory] = useState(null);
+    const [packingProduct,setPackingProduct] = useState(null);
     const [period,setPeriod] = useState(new Date().toISOString().slice(0,7));
     useEffect(() => { AsyncStorage.getItem(storageKey).then(raw => {
         const loaded = raw ? JSON.parse(raw) : empty();
@@ -123,11 +125,36 @@ export default function App() {
             await Sharing.shareAsync(file.uri,{mimeType:'application/pdf',dialogTitle:'Enviar pedido por WhatsApp',UTI:'com.adobe.pdf'});
         } catch(error) { Alert.alert('Compartilhar PDF',error.message); }
     }
+    async function sharePackingList() {
+        try {
+            const category = current.current.categories.find(item => item.id === packingCategory);
+            if (!category) throw Error('Selecione uma categoria.');
+            const manifest = packingList(current.current,packingCategory,packingProduct);
+            if (!manifest.items.length) throw Error('Não há itens aguardando entrega para este filtro.');
+            const row = item => '<tr><td>' + escape(item.name) + '</td><td>' + item.quantity + '</td></tr>';
+            const html = '<html><head><meta charset="utf-8"><style>body{font-family:Arial;color:#183828;padding:24px}table{border-collapse:collapse;width:100%;margin:12px 0}th,td{border:1px solid #ccd5ce;padding:8px;text-align:left}thead{display:table-header-group}tr{page-break-inside:avoid}h2,h3{page-break-after:avoid}</style></head><body>'
+                + '<h1>AgroTile Representações</h1><h2>Romaneio · ' + escape(category.name) + '</h2>'
+                + '<p>Pedidos aguardando entrega · Emitido em ' + escape(new Date().toLocaleString('pt-BR')) + '</p>'
+                + (packingProduct === null ? '' : '<p>Filtro por produto · ' + escape(manifest.items[0].name) + '</p>')
+                + '<h3>Resumo para separação</h3><table><thead><tr><th>Produto</th><th>Quantidade</th></tr></thead><tbody>'
+                + manifest.items.map(row).join('') + '</tbody></table>'
+                + '<p>' + manifest.orders.length + ' pedido(s) · ' + manifest.quantity + ' unidade(s)</p>'
+                + '<h2>Separação por pedido e cliente</h2>'
+                + manifest.orders.map(order => '<h3>Pedido #' + order.id + ' · ' + escape(order.client) + '</h3><p>'
+                    + escape(new Date(order.date).toLocaleDateString('pt-BR')) + '</p><table><thead><tr><th>Produto</th><th>Quantidade</th></tr></thead><tbody>'
+                    + order.items.map(row).join('') + '</tbody></table>').join('')
+                + '<hr><p>Vendedor · ' + escape(seller.name) + '<br>Telefone · ' + escape(seller.phone) + '<br>' + escape(seller.city) + '</p></body></html>';
+            const file = await Print.printToFileAsync({html});
+            await Sharing.shareAsync(file.uri,{mimeType:'application/pdf',dialogTitle:'Enviar romaneio ao setor responsável',UTI:'com.adobe.pdf'});
+        } catch(error) { Alert.alert('Romaneio',error.message); }
+    }
     if (!data) return <SafeAreaView><Text>Carregando AgroTile…</Text></SafeAreaView>;
     const collection = tab === 'billing' ? 'orders' : tab;
-    const records = tab === 'reports' ? [] : data[collection].filter(r => tab === 'orders' ? r.final === undefined : tab === 'billing' ? r.final !== undefined : true);
+    const records = ['reports','packing'].includes(tab) ? [] : data[collection].filter(r => tab === 'orders' ? r.final === undefined : tab === 'billing' ? r.final !== undefined : true);
     const draft = editor?.draft;
     const overview = dashboard(data);
+    const manifest = packingList(data, packingCategory, packingProduct);
+    const manifestCategory = data.categories.find(category => category.id === packingCategory);
     const activity = customerActivity(data);
     const activityByClient = new Map(activity.map(entry => [entry.client.id, entry]));
     const monthValid = /^\d{4}-(0[1-9]|1[0-2])$/.test(period);
@@ -165,7 +192,7 @@ export default function App() {
         </View>
         <View style={s.row}>{Object.entries(labels).map(([key,label]) => <Button key={key} title={label} onPress={() => {setTab(key);setHistory(null);}}/>)}</View>
         <Text style={s.heading}>{labels[tab]}</Text>
-        {!['reports','billing'].includes(tab) && <Button title="Adicionar" onPress={() => open(tab)}/>}
+        {!['reports','billing','packing'].includes(tab) && <Button title="Adicionar" onPress={() => open(tab)}/>}
         {records.map(record => <View key={record.id} style={s.card}>
             <Text style={s.title}>{collection === 'orders' ? '#' + record.id + ' · ' + data.clients.find(c => c.id === record.clientId)?.name : record.name}</Text>
             {collection === 'orders' && <><Text>{new Date(record.date).toLocaleDateString('pt-BR')} · {money(record.final ?? total(record))}</Text>{record.items.map((i,index) => <Text key={index}>{i.quantity} × {i.name} · {money(i.price)}</Text>)}<Text>{record.payment}</Text><Button title="Enviar por WhatsApp · PDF" onPress={() => pdf(record)}/>{record.final === undefined && <Button title="Pedido entregue" onPress={() => open('billing',record)}/>}</>}
@@ -182,6 +209,18 @@ export default function App() {
             <View style={s.row}><Button title="Editar" onPress={() => open(collection,record)}/>{tab === 'billing' && <Button title="Editar pagamento" onPress={() => open('billing',record)}/>}<Button title="Excluir" onPress={() => drop(collection,record.id)}/>{collection === 'clients' && <Button title="Histórico" onPress={() => setHistory(record.id)}/>}</View>
             {history === record.id && collection === 'clients' && data.orders.filter(o => o.clientId === record.id).map(o => <Text key={o.id}>#{o.id} · {new Date(o.date).toLocaleDateString('pt-BR')} · {o.final === undefined ? 'Pedido' : 'Faturado'} · {money(o.final ?? total(o))}</Text>)}
         </View>)}
+        {tab === 'packing' && <View style={s.card}>
+            <Text style={s.title}>Romaneio para separação</Text>
+            <Text>Itens de pedidos aguardando entrega. A categoria considerada é a do cadastro atual do produto.</Text>
+            <Select label="Categoria" entries={data.categories} value={packingCategory} onChange={id => {setPackingCategory(id);setPackingProduct(null);}}/>
+            {data.categories.length === 0 && <Text>Cadastre uma categoria para gerar um romaneio.</Text>}
+            {manifestCategory && <>
+                <Select label="Produto" entries={[{id:null,name:'Todos os produtos'},...data.products.filter(product => product.categoryId === packingCategory)]} value={packingProduct} onChange={setPackingProduct}/>
+                <Text>{manifest.orders.length} pedido(s) · {manifest.quantity} unidade(s)</Text>
+                {manifest.items.map(item => <Text key={item.productId}>{item.name} · {item.quantity} unidade(s)</Text>)}
+                {manifest.items.length === 0 ? <Text>Nenhum item aguardando entrega neste filtro.</Text> : <Button title="Gerar PDF e compartilhar" onPress={sharePackingList}/>}
+            </>}
+        </View>}
         {tab === 'reports' && <View style={s.card}>
             <Text style={s.title}>Semana atual · segunda a domingo</Text><Text>Pedidos em aberto criados na semana · {money(weekly.pending)}</Text><Text>Faturamento da semana · {money(weekly.revenue)}</Text>
             <Field label="Mês (AAAA-MM)" value={period} onChangeText={setPeriod}/>

@@ -80,3 +80,34 @@ export function customerActivity(state, now = new Date()) {
         return {client, lastPurchase, days};
     }).sort((a, b) => (b.days ?? Infinity) - (a.days ?? Infinity) || a.client.name.localeCompare(b.client.name, 'pt-BR'));
 }
+
+export function packingList(state, categoryId, productId = null) {
+    const products = new Map(state.products
+        .filter(product => product.categoryId === categoryId && (productId === null || product.id === productId))
+        .map(product => [product.id, product]));
+    const clients = new Map(state.clients.map(client => [client.id, client]));
+    const totals = new Map();
+    const orders = [];
+    for (const order of state.orders) {
+        if (order.final !== undefined) continue;
+        const items = order.items.filter(item => products.has(item.productId));
+        if (!items.length) continue;
+        const grouped = new Map();
+        for (const item of items) {
+            const product = products.get(item.productId);
+            const row = grouped.get(item.productId) ?? {productId:product.id, name:product.name, quantity:0};
+            row.quantity += item.quantity;
+            grouped.set(item.productId, row);
+            totals.set(item.productId, (totals.get(item.productId) ?? 0) + item.quantity);
+        }
+        orders.push({
+            id:order.id,
+            date:order.date,
+            client:clients.get(order.clientId)?.name ?? 'Cliente não encontrado',
+            items:[...grouped.values()],
+        });
+    }
+    const items = [...totals].map(([id, quantity]) => ({productId:id, name:products.get(id).name, quantity}))
+        .sort((a,b) => a.name.localeCompare(b.name,'pt-BR'));
+    return {items, orders, quantity:items.reduce((sum,item) => sum + item.quantity,0)};
+}
