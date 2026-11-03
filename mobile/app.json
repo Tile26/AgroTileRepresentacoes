@@ -1,0 +1,12 @@
+{
+  "expo": {
+    "name": "AgroTile Representações",
+    "slug": "agrotile-representacoes",
+    "owner": "tile89",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "android": {"package": "br.com.agrotile.representacoes"},
+    "runtimeVersion": {"policy": "appVersion"}
+  }
+}
