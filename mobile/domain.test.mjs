@@ -33,3 +33,26 @@ multi = change(multi,s => saveOrder(s,{...s.orders[0],items:[{productId:2,quanti
 assert.equal(multi.products[0].stock,9);
 assert.equal(multi.orders[0].items[0].cost,500);
 console.log('Pedidos com vários itens e preservação do custo histórico verificados.');
+
+const {dashboard, customerActivity} = await import('data:text/javascript;base64,' + Buffer.from(source).toString('base64'));
+const now = new Date(2026,10,3,12);
+const sample = empty();
+sample.clients = [{id:1,name:'Antigo'},{id:2,name:'Sem compra'},{id:3,name:'Hoje'}];
+sample.products = [{id:1,stock:5,cost:200}];
+sample.orders = [
+    {id:1,clientId:1,date:new Date(2026,9,20,12).toISOString(),delivered:new Date(2026,9,20,12).toISOString(),final:900,items:[{productId:1,quantity:1,price:1000}]},
+    {id:2,clientId:3,date:now.toISOString(),delivered:now.toISOString(),final:0,items:[{productId:1,quantity:1,price:1000}]},
+    {id:3,clientId:2,date:now.toISOString(),items:[{productId:1,quantity:2,price:1000}]},
+];
+assert.deepEqual(dashboard(sample,now),{stockValue:1000,clientCount:3,pendingCount:1,pendingValue:2000,monthlySales:1,monthlyRevenue:0});
+assert.deepEqual(customerActivity(sample,now).map(a => [a.client.id,a.days]),[[2,null],[1,14],[3,0]]);
+sample.orders.push({id:4,clientId:1,delivered:new Date(2026,10,2,23).toISOString(),final:800,items:[]});
+assert.equal(dashboard(sample,now).monthlyRevenue,800);
+assert.equal(customerActivity(sample,now).find(a => a.client.id === 1).days,1);
+sample.orders.pop();
+assert.equal(customerActivity(sample,now).find(a => a.client.id === 1).days,14);
+const cleared = change(sample,s => remove(s,'orders',3));
+assert.equal(dashboard(cleared,now).pendingCount,0);
+assert.equal(dashboard(cleared,now).stockValue,1400);
+assert.equal(customerActivity(empty(),now).length,0);
+console.log('Painel mensal, pedidos pendentes e dias sem comprar verificados.');

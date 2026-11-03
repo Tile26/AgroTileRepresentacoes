@@ -3,7 +3,7 @@ import {Alert, SafeAreaView, ScrollView, View, Text, TextInput, Pressable, Modal
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
-import {empty, money, numeric, change, saveOrder, remove, total, report} from './domain';
+import {empty, money, numeric, change, saveOrder, remove, total, report, dashboard, customerActivity} from './domain';
 
 const labels = {clients:'Clientes',categories:'Categorias',products:'Produtos',orders:'Pedidos',billing:'Faturamento',expenses:'Despesas',reports:'Relatórios'};
 const storageKey = 'agrotile-v1';
@@ -42,6 +42,7 @@ export default function App() {
     const [tab,setTab] = useState('orders');
     const [editor,setEditor] = useState(null);
     const [history,setHistory] = useState(null);
+    const [showActivity,setShowActivity] = useState(false);
     const [period,setPeriod] = useState(new Date().toISOString().slice(0,7));
     useEffect(() => { AsyncStorage.getItem(storageKey).then(raw => {
         const loaded = raw ? JSON.parse(raw) : empty();
@@ -126,6 +127,9 @@ export default function App() {
     const collection = tab === 'billing' ? 'orders' : tab;
     const records = tab === 'reports' ? [] : data[collection].filter(r => tab === 'orders' ? r.final === undefined : tab === 'billing' ? r.final !== undefined : true);
     const draft = editor?.draft;
+    const overview = dashboard(data);
+    const activity = customerActivity(data);
+    const activityByClient = new Map(activity.map(entry => [entry.client.id, entry]));
     const monthValid = /^\d{4}-(0[1-9]|1[0-2])$/.test(period);
     const start = monthValid ? new Date(Number(period.slice(0,4)),Number(period.slice(5))-1,1) : new Date();
     const end = new Date(start.getFullYear(),start.getMonth()+1,1);
@@ -139,6 +143,26 @@ export default function App() {
     return <SafeAreaView style={s.page}><ScrollView contentContainerStyle={s.content}>
         <Text style={s.brand}>AgroTile</Text><Text style={s.subtitle}>Representações</Text>
         <View style={s.card}><Text style={s.title}>Vendedor</Text><Text>{seller.name}</Text><Text>Telefone · {seller.phone}</Text><Text>{seller.city}</Text></View>
+        <Text style={s.heading}>Resumo do mês</Text>
+        <View style={s.row}>
+            <View style={s.metric}><Text>Valor do estoque</Text><Text style={s.metricValue}>{money(overview.stockValue)}</Text><Text>A preço de custo</Text></View>
+            <View style={s.metric}><Text>Vendas do mês</Text><Text style={s.metricValue}>{overview.monthlySales}</Text><Text>Pedidos faturados</Text></View>
+            <View style={s.metric}><Text>Faturamento do mês</Text><Text style={s.metricValue}>{money(overview.monthlyRevenue)}</Text><Text>Valores finais</Text></View>
+            <View style={s.metric}><Text>Clientes cadastrados</Text><Text style={s.metricValue}>{overview.clientCount}</Text></View>
+            <View style={s.metric}><Text>Pedidos a entregar</Text><Text style={s.metricValue}>{overview.pendingCount}</Text><Text>{overview.pendingCount === 0 ? 'Tudo entregue' : money(overview.pendingValue) + ' em pedidos'}</Text></View>
+        </View>
+        <View style={s.card}>
+            <Text style={s.title}>Positivação de clientes</Text>
+            <Text>Última compra baseada na entrega e no faturamento. Clientes sem compras aparecem primeiro, seguidos dos que estão há mais tempo sem comprar.</Text>
+            <Button title={showActivity ? 'Recolher lista' : 'Ver clientes para contato'} onPress={() => setShowActivity(!showActivity)}/>
+            {showActivity && activity.length === 0 && <Text>Cadastre clientes para acompanhar suas compras.</Text>}
+            {showActivity && activity.map(entry => <View key={entry.client.id} style={s.activity}>
+                <Text style={s.title}>{entry.client.name}</Text>
+                <Text>{entry.days === null ? 'Sem compras faturadas' : entry.days + ' dia(s) sem comprar'}</Text>
+                {entry.lastPurchase && <Text>Última compra · {entry.lastPurchase.toLocaleDateString('pt-BR')}</Text>}
+                {!!entry.client.phone && <Text>Telefone · {entry.client.phone}</Text>}
+            </View>)}
+        </View>
         <View style={s.row}>{Object.entries(labels).map(([key,label]) => <Button key={key} title={label} onPress={() => {setTab(key);setHistory(null);}}/>)}</View>
         <Text style={s.heading}>{labels[tab]}</Text>
         {!['reports','billing'].includes(tab) && <Button title="Adicionar" onPress={() => open(tab)}/>}
@@ -146,6 +170,7 @@ export default function App() {
             <Text style={s.title}>{collection === 'orders' ? '#' + record.id + ' · ' + data.clients.find(c => c.id === record.clientId)?.name : record.name}</Text>
             {collection === 'orders' && <><Text>{new Date(record.date).toLocaleDateString('pt-BR')} · {money(record.final ?? total(record))}</Text>{record.items.map((i,index) => <Text key={index}>{i.quantity} × {i.name} · {money(i.price)}</Text>)}<Text>{record.payment}</Text><Button title="Enviar por WhatsApp · PDF" onPress={() => pdf(record)}/>{record.final === undefined && <Button title="Pedido entregue" onPress={() => open('billing',record)}/>}</>}
             {collection === 'clients' && <View>
+                <Text>{activityByClient.get(record.id)?.days === null ? 'Sem compras faturadas' : activityByClient.get(record.id)?.days + ' dia(s) sem comprar'}</Text>
                 {!!record.legalName && <Text>{record.legalName}</Text>}
                 {!!record.document && <Text>CPF / CNPJ · {record.document}</Text>}
                 {!!record.phone && <Text>{record.phone}</Text>}
@@ -197,6 +222,9 @@ export default function App() {
     </ScrollView></SafeAreaView></Modal></SafeAreaView>;
 }
 const s = StyleSheet.create({
+    metric:{backgroundColor:'white',padding:16,borderRadius:12,flexGrow:1,flexBasis:'45%',gap:6},
+    metricValue:{fontSize:23,fontWeight:'800',color:'#17482f'},
+    activity:{borderTopWidth:1,borderTopColor:'#dce8dd',paddingTop:12,marginTop:10},
     page:{flex:1,backgroundColor:'#edf3ed',paddingTop:28},
     content:{padding:20,paddingBottom:50},
     brand:{fontSize:32,fontWeight:'800',color:'#17482f'},

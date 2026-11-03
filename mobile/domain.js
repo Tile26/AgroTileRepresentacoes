@@ -50,3 +50,33 @@ export function report(state, from, until) {
     return {pending:pending.reduce((sum,o) => sum + total(o),0), revenue, cost, expenses, profit:revenue-cost-expenses};
 }
 
+
+export function dashboard(state, now = new Date()) {
+    const start = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
+    const end = new Date(now.getFullYear(), now.getMonth() + 1, 1).toISOString();
+    const pending = state.orders.filter(order => order.final === undefined);
+    const billed = state.orders.filter(order => order.final !== undefined);
+    const monthly = billed.filter(order => order.delivered >= start && order.delivered < end);
+    return {
+        stockValue: state.products.reduce((sum, product) => sum + product.stock * product.cost, 0),
+        clientCount: state.clients.length,
+        pendingCount: pending.length,
+        pendingValue: pending.reduce((sum, order) => sum + total(order), 0),
+        monthlySales: monthly.length,
+        monthlyRevenue: monthly.reduce((sum, order) => sum + order.final, 0),
+    };
+}
+export function customerActivity(state, now = new Date()) {
+    const today = Date.UTC(now.getFullYear(), now.getMonth(), now.getDate());
+    return state.clients.map(client => {
+        const purchases = state.orders
+            .filter(order => order.clientId === client.id && order.final !== undefined)
+            .map(order => new Date(order.delivered))
+            .filter(date => Number.isFinite(date.getTime()));
+        const lastPurchase = purchases.length ? new Date(Math.max(...purchases.map(date => date.getTime()))) : null;
+        const days = lastPurchase
+            ? Math.max(0, Math.round((today - Date.UTC(lastPurchase.getFullYear(), lastPurchase.getMonth(), lastPurchase.getDate())) / 86400000))
+            : null;
+        return {client, lastPurchase, days};
+    }).sort((a, b) => (b.days ?? Infinity) - (a.days ?? Infinity) || a.client.name.localeCompare(b.client.name, 'pt-BR'));
+}
