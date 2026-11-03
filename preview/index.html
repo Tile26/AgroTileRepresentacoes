@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="pt-BR">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AgroTile Representações</title>
+<style>
+body{margin:0;background:#eef3ed;color:#183828;font:16px system-ui}
+header{background:#173d2a;color:white;padding:28px}h1{margin:0}
+main{max-width:920px;margin:auto;padding:16px;display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px}
+section{background:white;padding:20px;border-radius:14px}h2{margin-top:0}
+label{display:block;margin:10px 0}input,select,button{box-sizing:border-box;padding:9px;font:inherit;border:1px solid #9bab9d;border-radius:6px}input,select{width:100%}button{background:#246340;color:white;cursor:pointer}article{border-top:1px solid #ddd;padding:12px 0}
+</style>
+<header><h1>AgroTile Representações</h1><p>Prévia interativa · dados fictícios · sessão de demonstração</p></header>
+<main>
+<section><h2>Clientes</h2><form id="customer"><label>Nome<input name="name" required></label><button>Cadastrar cliente</button></form><ul id="customers"></ul></section>
+<section><h2>Novo pedido</h2><form id="order"><label>Cliente<select name="client"></select></label><label>Produto<select name="product"></select></label><label>Quantidade<input name="quantity" type="number" min="1" value="1" required></label><label>Preço unitário (R$)<input name="price" type="number" min="0" step=".01" required></label><button>Salvar pedido</button></form><p id="notice" role="status"></p></section>
+<section><h2>Estoque</h2><ul id="stock"></ul></section>
+<section><h2>Pedidos</h2><div id="pending"></div></section>
+<section><h2>Faturamento</h2><div id="billed"></div></section>
+</main>
+<script>
+const clients = ['Fazenda Horizonte'];
+const products = [{name:'Sementes de milho', stock:20, price:12000}, {name:'Adubo orgânico', stock:12, price:8500}];
+const orders = [];
+const byId = id => document.getElementById(id);
+const customer = byId('customer');
+const order = byId('order');
+const fields = order.elements;
+const money = cents => (cents / 100).toLocaleString('pt-BR', {style:'currency',currency:'BRL'});
+function list(id, items) {
+    byId(id).replaceChildren(...items.map(item => {
+        const row = document.createElement('li');
+        row.textContent = item;
+        return row;
+    }));
+}
+function updatePrice() {
+    fields.price.value = (products[fields.product.value].price / 100).toFixed(2);
+}
+function render() {
+    const selected = fields.client.value;
+    fields.client.replaceChildren(...clients.map((name, index) => new Option(name,index)));
+    if (selected !== '') fields.client.value = selected;
+    list('customers',clients);
+    list('stock',products.map(p => p.name + ' · ' + p.stock + ' unidades'));
+    byId('pending').replaceChildren();
+    byId('billed').replaceChildren();
+    for (const entry of orders) {
+        const row = document.createElement('article');
+        row.textContent = '#' + entry.id + ' · ' + entry.client + ' · ' + entry.quantity + ' × ' + entry.product + ' · ' + money(entry.final ?? entry.total);
+        if (entry.final !== undefined) {
+            row.append(' · ' + entry.payment);
+            byId('billed').append(row);
+            continue;
+        }
+        const form = document.createElement('form');
+        form.innerHTML = '<label>Forma de pagamento<select name="payment"><option>Pix</option><option>Dinheiro</option><option>Cartão</option><option>Boleto</option></select></label><label>Valor final (R$)<input name="amount" type="number" min="0" step=".01" required></label><button>Pedido entregue</button>';
+        form.elements.amount.value = (entry.total / 100).toFixed(2);
+        form.onsubmit = event => {
+            event.preventDefault();
+            entry.final = Math.round(form.elements.amount.valueAsNumber * 100);
+            entry.payment = form.elements.payment.value;
+            render();
+        };
+        row.append(form);
+        byId('pending').append(row);
+    }
+}
+customer.onsubmit = event => {
+    event.preventDefault();
+    const name = customer.elements.namedItem('name').value.trim();
+    if (!name) return;
+    clients.push(name);
+    customer.reset();
+    render();
+    fields.client.value = clients.length - 1;
+};
+fields.product.replaceChildren(...products.map((p,index) => new Option(p.name,index)));
+fields.product.onchange = updatePrice;
+order.onsubmit = event => {
+    event.preventDefault();
+    const product = products[fields.product.value];
+    const quantity = fields.quantity.valueAsNumber;
+    if (quantity > product.stock) {
+        byId('notice').textContent = 'Quantidade acima do estoque disponível.';
+        return;
+    }
+    product.stock -= quantity;
+    orders.push({id:orders.length + 1,client:clients[fields.client.value],product:product.name,quantity,total:quantity * Math.round(fields.price.valueAsNumber * 100)});
+    byId('notice').textContent = 'Pedido salvo. Estoque atualizado.';
+    render();
+};
+updatePrice();
+render();
+</script>
+</html>
