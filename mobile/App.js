@@ -31,7 +31,12 @@ const clientFields = [
     ['notes', 'Observações do cadastro'],
 ];
 const escape = value => String(value).replace(/[&<>"']/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
-function Button({title,onPress}) { return <Pressable style={s.button} onPress={onPress}><Text style={s.buttonText}>{title}</Text></Pressable>; }
+function Button({title,onPress,secondary = false}) {
+    const danger = title === 'Excluir' || title === 'Remover item';
+    return <Pressable accessibilityRole="button" style={({pressed}) => [s.button,secondary && s.secondaryButton,danger && s.dangerButton,pressed && {opacity:0.7}]} onPress={onPress}>
+        <Text style={[s.buttonText,secondary && s.secondaryText,danger && s.dangerText]}>{title}</Text>
+    </Pressable>;
+}
 function Field({label,value,onChangeText,numeric:decimal}) { return <View><Text style={s.label}>{label}</Text><TextInput style={s.input} value={String(value ?? '')} onChangeText={onChangeText} keyboardType={decimal ? 'decimal-pad' : 'default'}/></View>; }
 function Select({label,entries,value,onChange}) { return <View><Text style={s.label}>{label}</Text><View style={s.row}>{entries.map(entry => <Pressable key={entry.id} onPress={() => onChange(entry.id)} style={[s.choice,value === entry.id && s.selected]}><Text style={value === entry.id && {color:'white'}}>{entry.name}</Text></Pressable>)}</View></View>; }
 
@@ -43,6 +48,7 @@ export default function App() {
     const [editor,setEditor] = useState(null);
     const [history,setHistory] = useState(null);
     const [showActivity,setShowActivity] = useState(false);
+    const [search,setSearch] = useState('');
     const [packingCategory,setPackingCategory] = useState(null);
     const [packingProduct,setPackingProduct] = useState(null);
     const [period,setPeriod] = useState(new Date().toISOString().slice(0,7));
@@ -120,7 +126,7 @@ export default function App() {
                 .map(([key,label]) => '<p><strong>' + escape(label) + '</strong> · ' + escape(client[key]) + '</p>')
                 .join('');
             const sellerDetails = '<p><strong>Vendedor</strong> · ' + escape(seller.name) + '<br>Telefone · ' + escape(seller.phone) + '<br>' + escape(seller.city) + '</p>';
-            const html = '<html><meta charset="utf-8"><body style="font-family:Arial;padding:30px"><h1>AgroTile Representações</h1><h2>Pedido #' + order.id + '</h2><p>' + escape(client?.name) + '</p>' + clientDetails + '<p>' + (client?.needsInvoice ? 'Cliente solicita nota fiscal' : '') + '</p><p>' + new Date(order.date).toLocaleDateString('pt-BR') + '</p><table width="100%"><tr><th>Produto</th><th>Qtd.</th><th>Unitário</th><th>Total</th></tr>' + order.items.map(i => '<tr><td>' + escape(i.name) + '</td><td>' + i.quantity + '</td><td>' + money(i.price) + '</td><td>' + money(i.price*i.quantity) + '</td></tr>').join('') + '</table><h2>Total ' + money(order.final ?? total(order)) + '</h2><p>' + escape(order.payment ?? 'Pedido aguardando entrega') + '</p><hr>' + sellerDetails + '</body></html>';
+            const html = '<html><head><meta charset="utf-8"><style>body{font-family:Arial;color:#203b2e;padding:30px;font-size:12px}h1{background:#123c2e;color:white;padding:22px;border-bottom:5px solid #cdb36a;font-size:25px}h2{color:#123c2e;margin-top:22px}table{border-collapse:collapse;width:100%;margin-top:18px}th{background:#eaf0e3;text-align:left}th,td{padding:10px;border-bottom:1px solid #dce3d6}tr{page-break-inside:avoid}hr{border:0;border-top:2px solid #cdb36a;margin-top:24px}p{line-height:1.5}</style></head><body><h1>AgroTile Representações</h1><h2>Pedido #' + order.id + '</h2><p>' + escape(client?.name) + '</p>' + clientDetails + '<p>' + (client?.needsInvoice ? 'Cliente solicita nota fiscal' : '') + '</p><p>' + new Date(order.date).toLocaleDateString('pt-BR') + '</p><table width="100%"><tr><th>Produto</th><th>Qtd.</th><th>Unitário</th><th>Total</th></tr>' + order.items.map(i => '<tr><td>' + escape(i.name) + '</td><td>' + i.quantity + '</td><td>' + money(i.price) + '</td><td>' + money(i.price*i.quantity) + '</td></tr>').join('') + '</table><h2>Total ' + money(order.final ?? total(order)) + '</h2><p>' + escape(order.payment ?? 'Pedido aguardando entrega') + '</p><hr>' + sellerDetails + '</body></html>';
             const file = await Print.printToFileAsync({html});
             await Sharing.shareAsync(file.uri,{mimeType:'application/pdf',dialogTitle:'Enviar pedido por WhatsApp',UTI:'com.adobe.pdf'});
         } catch(error) { Alert.alert('Compartilhar PDF',error.message); }
@@ -132,7 +138,7 @@ export default function App() {
             const manifest = packingList(current.current,packingCategory,packingProduct);
             if (!manifest.items.length) throw Error('Não há itens aguardando entrega para este filtro.');
             const row = item => '<tr><td>' + escape(item.name) + '</td><td>' + item.quantity + '</td></tr>';
-            const html = '<html><head><meta charset="utf-8"><style>body{font-family:Arial;color:#183828;padding:24px}table{border-collapse:collapse;width:100%;margin:12px 0}th,td{border:1px solid #ccd5ce;padding:8px;text-align:left}thead{display:table-header-group}tr{page-break-inside:avoid}h2,h3{page-break-after:avoid}</style></head><body>'
+            const html = '<html><head><meta charset="utf-8"><style>body{font-family:Arial;color:#203b2e;padding:24px;font-size:12px}h1{background:#123c2e;color:white;padding:22px;border-bottom:5px solid #cdb36a}th{background:#eaf0e3}hr{border:0;border-top:2px solid #cdb36a;margin-top:24px}table{border-collapse:collapse;width:100%;margin:12px 0}th,td{border:1px solid #ccd5ce;padding:8px;text-align:left}thead{display:table-header-group}tr{page-break-inside:avoid}h2,h3{page-break-after:avoid}</style></head><body>'
                 + '<h1>AgroTile Representações</h1><h2>Romaneio · ' + escape(category.name) + '</h2>'
                 + '<p>Pedidos aguardando entrega · Emitido em ' + escape(new Date().toLocaleString('pt-BR')) + '</p>'
                 + (packingProduct === null ? '' : '<p>Filtro por produto · ' + escape(manifest.items[0].name) + '</p>')
@@ -151,6 +157,12 @@ export default function App() {
     if (!data) return <SafeAreaView><Text>Carregando AgroTile…</Text></SafeAreaView>;
     const collection = tab === 'billing' ? 'orders' : tab;
     const records = ['reports','packing'].includes(tab) ? [] : data[collection].filter(r => tab === 'orders' ? r.final === undefined : tab === 'billing' ? r.final !== undefined : true);
+    const query = search.trim().toLocaleLowerCase('pt-BR');
+    const visibleRecords = records.filter(record => {
+        const client = data.clients.find(item => item.id === record.clientId);
+        return [record.id,record.name,record.legalName,record.document,record.phone,client?.name,...(record.items ?? []).map(item => item.name)]
+            .filter(value => value !== undefined).join(' ').toLocaleLowerCase('pt-BR').includes(query);
+    });
     const draft = editor?.draft;
     const overview = dashboard(data);
     const manifest = packingList(data, packingCategory, packingProduct);
@@ -167,9 +179,18 @@ export default function App() {
     const weekEnd = new Date(weekStart);
     weekEnd.setDate(weekEnd.getDate()+7);
     const weekly = report(data,weekStart.toISOString(),weekEnd.toISOString());
-    return <SafeAreaView style={s.page}><ScrollView contentContainerStyle={s.content}>
-        <Text style={s.brand}>AgroTile</Text><Text style={s.subtitle}>Representações</Text>
-        <View style={s.card}><Text style={s.title}>Vendedor</Text><Text>{seller.name}</Text><Text>Telefone · {seller.phone}</Text><Text>{seller.city}</Text></View>
+    return <SafeAreaView style={s.page}><ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={s.content}>
+        <View style={s.hero}>
+            <View style={s.brandRow}><View style={s.monogram}><Text style={s.monogramText}>AT</Text></View><View><Text style={s.brand}>AgroTile</Text><Text style={s.subtitle}>REPRESENTAÇÕES</Text></View></View>
+            <View style={s.heroDivider}/>
+            <Text style={s.heroGreeting}>Sua operação, em dia.</Text>
+            <Text style={s.heroDetail}>{seller.name}</Text>
+            <Text style={s.heroDetail}>{seller.phone} · {seller.city}</Text>
+        </View>
+        <View style={s.quickActions}>
+            <Button title="+ Novo pedido" onPress={() => open('orders')}/>
+            <Button title="+ Cliente" secondary onPress={() => open('clients')}/>
+        </View>
         <Text style={s.heading}>Resumo do mês</Text>
         <View style={s.row}>
             <View style={s.metric}><Text>Valor do estoque</Text><Text style={s.metricValue}>{money(overview.stockValue)}</Text><Text>A preço de custo</Text></View>
@@ -190,10 +211,17 @@ export default function App() {
                 {!!entry.client.phone && <Text>Telefone · {entry.client.phone}</Text>}
             </View>)}
         </View>
-        <View style={s.row}>{Object.entries(labels).map(([key,label]) => <Button key={key} title={label} onPress={() => {setTab(key);setHistory(null);}}/>)}</View>
+        <Text style={s.eyebrow}>GERENCIAR</Text>
+        <View style={s.menu}>{Object.entries(labels).map(([key,label]) => <Pressable key={key} accessibilityRole="button" accessibilityState={{selected:tab === key}} style={[s.menuItem,tab === key && s.menuSelected]} onPress={() => {setTab(key);setHistory(null);setSearch('');}}><Text style={[s.menuText,tab === key && s.menuSelectedText]}>{label}</Text></Pressable>)}</View>
         <Text style={s.heading}>{labels[tab]}</Text>
         {!['reports','billing','packing'].includes(tab) && <Button title="Adicionar" onPress={() => open(tab)}/>}
-        {records.map(record => <View key={record.id} style={s.card}>
+        {!['reports','packing'].includes(tab) && <View>
+            <TextInput accessibilityLabel="Buscar registros" placeholder="Buscar nome, produto ou número…" placeholderTextColor="#6c7d73" style={s.search} value={search} onChangeText={setSearch}/>
+            <Text style={s.resultCount}>{visibleRecords.length} registro(s)</Text>
+            {visibleRecords.length === 0 && <View style={s.emptyState}><Text style={s.title}>{query ? 'Nenhum resultado encontrado' : 'Vamos começar?'}</Text><Text style={s.muted}>{query ? 'Tente outro nome ou número.' : 'Os registros desta seção aparecerão aqui.'}</Text></View>}
+        </View>}
+        {visibleRecords.map(record => <View key={record.id} style={s.card}>
+            {collection === 'orders' && <View style={[s.badge,record.final !== undefined && s.deliveredBadge]}><Text style={s.badgeText}>{record.final === undefined ? 'AGUARDANDO ENTREGA' : 'FATURADO'}</Text></View>}
             <Text style={s.title}>{collection === 'orders' ? '#' + record.id + ' · ' + data.clients.find(c => c.id === record.clientId)?.name : record.name}</Text>
             {collection === 'orders' && <><Text>{new Date(record.date).toLocaleDateString('pt-BR')} · {money(record.final ?? total(record))}</Text>{record.items.map((i,index) => <Text key={index}>{i.quantity} × {i.name} · {money(i.price)}</Text>)}<Text>{record.payment}</Text><Button title="Enviar por WhatsApp · PDF" onPress={() => pdf(record)}/>{record.final === undefined && <Button title="Pedido entregue" onPress={() => open('billing',record)}/>}</>}
             {collection === 'clients' && <View>
@@ -206,7 +234,7 @@ export default function App() {
             </View>}
             {collection === 'products' && <Text>{record.stock} unidades · Venda {money(record.price)} · Custo {money(record.cost)}</Text>}
             {collection === 'expenses' && <Text>{money(record.amount)} · {new Date(record.date).toLocaleDateString('pt-BR')}</Text>}
-            <View style={s.row}><Button title="Editar" onPress={() => open(collection,record)}/>{tab === 'billing' && <Button title="Editar pagamento" onPress={() => open('billing',record)}/>}<Button title="Excluir" onPress={() => drop(collection,record.id)}/>{collection === 'clients' && <Button title="Histórico" onPress={() => setHistory(record.id)}/>}</View>
+            <View style={s.row}><Button title="Editar" secondary onPress={() => open(collection,record)}/>{tab === 'billing' && <Button title="Editar pagamento" onPress={() => open('billing',record)}/>}<Button title="Excluir" onPress={() => drop(collection,record.id)}/>{collection === 'clients' && <Button title="Histórico" secondary onPress={() => setHistory(record.id)}/>}</View>
             {history === record.id && collection === 'clients' && data.orders.filter(o => o.clientId === record.id).map(o => <Text key={o.id}>#{o.id} · {new Date(o.date).toLocaleDateString('pt-BR')} · {o.final === undefined ? 'Pedido' : 'Faturado'} · {money(o.final ?? total(o))}</Text>)}
         </View>)}
         {tab === 'packing' && <View style={s.card}>
@@ -229,7 +257,7 @@ export default function App() {
             {data.categories.map(c => <Text key={c.id}>{c.name} · {money(data.products.filter(p => p.categoryId === c.id).reduce((sum,p) => sum+p.stock*p.cost,0))}</Text>)}
         </View>}
     </ScrollView>
-    <Modal visible={!!editor} onRequestClose={() => setEditor(null)} animationType="slide"><SafeAreaView style={s.page}><ScrollView contentContainerStyle={s.content}>
+    <Modal visible={!!editor} onRequestClose={() => setEditor(null)} animationType="slide"><SafeAreaView style={s.page}><ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={s.content}>
         <Text style={s.heading}>{labels[editor?.collection]}</Text>
         {editor && !['orders','billing'].includes(editor.collection) && <Field label={editor.collection === 'clients' ? 'Nome de identificação do cliente' : 'Nome / descrição'} value={draft.name} onChangeText={v => update('name',v)}/>}
         {editor?.collection === 'clients' && <>
@@ -257,25 +285,50 @@ export default function App() {
                     commit(state => saveOrder(state,parsed));
                 } catch(error) { Alert.alert('Verifique os dados',error.message); }
             } else save();
-        }}/><Button title="Cancelar" onPress={() => setEditor(null)}/>
+        }}/><Button title="Cancelar" secondary onPress={() => setEditor(null)}/>
     </ScrollView></SafeAreaView></Modal></SafeAreaView>;
 }
 const s = StyleSheet.create({
-    metric:{backgroundColor:'white',padding:16,borderRadius:12,flexGrow:1,flexBasis:'45%',gap:6},
-    metricValue:{fontSize:23,fontWeight:'800',color:'#17482f'},
-    activity:{borderTopWidth:1,borderTopColor:'#dce8dd',paddingTop:12,marginTop:10},
-    page:{flex:1,backgroundColor:'#edf3ed',paddingTop:28},
-    content:{padding:20,paddingBottom:50},
-    brand:{fontSize:32,fontWeight:'800',color:'#17482f'},
-    subtitle:{fontSize:16,color:'#53705c',marginBottom:20},
-    heading:{fontSize:24,fontWeight:'700',marginVertical:20,color:'#17482f'},
-    title:{fontSize:18,fontWeight:'700',marginBottom:8},
-    row:{flexDirection:'row',flexWrap:'wrap',gap:8},
-    button:{backgroundColor:'#246140',padding:12,borderRadius:8,marginVertical:4,alignSelf:'flex-start'},
-    buttonText:{color:'white',fontWeight:'600'},
-    card:{backgroundColor:'white',padding:18,borderRadius:12,marginVertical:8,gap:6},
-    input:{backgroundColor:'white',borderWidth:1,borderColor:'#b3c5b7',padding:12,borderRadius:8,marginVertical:8},
-    label:{fontWeight:'600',marginTop:12},
-    choice:{padding:10,backgroundColor:'#dce8dd',borderRadius:6,marginVertical:4},
-    selected:{backgroundColor:'#246140'}
+    page:{flex:1,backgroundColor:'#f4f5ef',paddingTop:28},
+    content:{padding:18,paddingBottom:48},
+    hero:{backgroundColor:'#123c2e',borderRadius:24,padding:24,marginBottom:16},
+    brandRow:{flexDirection:'row',alignItems:'center',gap:14},
+    monogram:{width:56,height:56,borderRadius:16,backgroundColor:'#cdb36a',alignItems:'center',justifyContent:'center'},
+    monogramText:{fontSize:23,fontWeight:'900',color:'#123c2e'},
+    brand:{fontSize:32,fontWeight:'800',color:'#ffffff',letterSpacing:-1},
+    subtitle:{fontSize:11,color:'#e1d3a6',letterSpacing:2.4,marginTop:2},
+    heroDivider:{height:1,backgroundColor:'#3c5b4b',marginVertical:18},
+    heroGreeting:{fontSize:21,fontWeight:'700',color:'#ffffff',marginBottom:10},
+    heroDetail:{fontSize:13,lineHeight:21,color:'#d6e3d9'},
+    quickActions:{flexDirection:'row',flexWrap:'wrap',gap:10,marginBottom:4},
+    metric:{backgroundColor:'#ffffff',padding:18,borderRadius:18,flexGrow:1,flexBasis:'45%',gap:8,borderWidth:1,borderColor:'#e4e8dd',borderTopWidth:3,borderTopColor:'#bd9f50'},
+    metricValue:{fontSize:24,fontWeight:'800',color:'#123c2e',letterSpacing:-0.5},
+    activity:{borderTopWidth:1,borderTopColor:'#e4e8dd',paddingTop:14,marginTop:10},
+    heading:{fontSize:24,fontWeight:'800',marginTop:24,marginBottom:16,color:'#123c2e',letterSpacing:-0.5},
+    title:{fontSize:18,fontWeight:'700',marginBottom:8,color:'#203b2e'},
+    eyebrow:{fontSize:11,fontWeight:'800',letterSpacing:1.8,color:'#657867',marginTop:24,marginBottom:12},
+    row:{flexDirection:'row',flexWrap:'wrap',gap:10},
+    menu:{flexDirection:'row',flexWrap:'wrap',gap:8},
+    menuItem:{paddingHorizontal:15,paddingVertical:13,borderRadius:12,borderWidth:1,borderColor:'#dce3d6',backgroundColor:'#ffffff',minHeight:46},
+    menuSelected:{backgroundColor:'#123c2e',borderColor:'#123c2e'},
+    menuText:{fontSize:14,fontWeight:'600',color:'#3d5647'},
+    menuSelectedText:{color:'#ffffff'},
+    button:{backgroundColor:'#1b5740',paddingHorizontal:18,paddingVertical:14,borderRadius:12,marginVertical:4,alignSelf:'flex-start',minHeight:48,justifyContent:'center'},
+    buttonText:{color:'#ffffff',fontWeight:'700',fontSize:14},
+    secondaryButton:{backgroundColor:'#e9eee3',borderWidth:1,borderColor:'#d4dfcd'},
+    secondaryText:{color:'#244e35'},
+    dangerButton:{backgroundColor:'#fff1ed',borderWidth:1,borderColor:'#efcfc5'},
+    dangerText:{color:'#9b3428'},
+    card:{backgroundColor:'#ffffff',padding:20,borderRadius:18,marginVertical:9,gap:8,borderWidth:1,borderColor:'#e3e8dd'},
+    input:{backgroundColor:'#ffffff',borderWidth:1,borderColor:'#bdcbb7',padding:14,borderRadius:12,marginVertical:8,minHeight:50,fontSize:16,color:'#203b2e'},
+    label:{fontWeight:'600',marginTop:16,color:'#3d5647',fontSize:13},
+    choice:{paddingHorizontal:14,paddingVertical:12,backgroundColor:'#eef2e8',borderRadius:10,marginVertical:4,minHeight:44},
+    selected:{backgroundColor:'#246140'},
+    search:{backgroundColor:'#ffffff',borderWidth:1,borderColor:'#dce3d6',padding:15,borderRadius:14,minHeight:50,marginTop:14,fontSize:15,color:'#203b2e'},
+    resultCount:{color:'#657867',fontSize:12,marginVertical:10},
+    emptyState:{padding:26,backgroundColor:'#eaf0e3',borderRadius:18,marginVertical:8},
+    muted:{color:'#52674e',lineHeight:22},
+    badge:{backgroundColor:'#fff2d6',borderRadius:7,paddingHorizontal:10,paddingVertical:7,alignSelf:'flex-start',marginBottom:4},
+    deliveredBadge:{backgroundColor:'#e2efe2'},
+    badgeText:{fontSize:10,fontWeight:'800',letterSpacing:1,color:'#44552e'},
 });
