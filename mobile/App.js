@@ -1,9 +1,10 @@
 import React, {useState, useEffect, useRef} from 'react';
-import {Alert, SafeAreaView, ScrollView, View, Text, TextInput, Pressable, Modal, StyleSheet} from 'react-native';
+import {Alert, SafeAreaView, ScrollView, View, Text, TextInput, Pressable, Modal, FlatList, StyleSheet} from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
 import representedBrands from './assets/represented-brands.json';
+import {searchEntries} from './search';
 import {empty, money, numeric, change, saveOrder, remove, total, report, dashboard, customerActivity, packingList} from './domain';
 
 const labels = {clients:'Clientes',categories:'Categorias',products:'Produtos',orders:'Pedidos',billing:'Faturamento',expenses:'Despesas',reports:'Relatórios',packing:'Romaneio'};
@@ -39,8 +40,35 @@ function Button({title,onPress,secondary = false}) {
     </Pressable>;
 }
 function Field({label,value,onChangeText,numeric:decimal}) { return <View><Text style={s.label}>{label}</Text><TextInput style={s.input} value={String(value ?? '')} onChangeText={onChangeText} keyboardType={decimal ? 'decimal-pad' : 'default'}/></View>; }
-function Select({label,entries,value,onChange}) { return <View><Text style={s.label}>{label}</Text><View style={s.row}>{entries.map(entry => <Pressable key={entry.id} onPress={() => onChange(entry.id)} style={[s.choice,value === entry.id && s.selected]}><Text style={value === entry.id && {color:'white'}}>{entry.name}</Text></Pressable>)}</View></View>; }
-
+function Select({label,entries,value,onChange}) {
+    const [visible,setVisible] = useState(false);
+    const [query,setQuery] = useState('');
+    const selected = entries.find(entry => entry.id === value);
+    const options = searchEntries(entries,query);
+    return <View>
+        <Text style={s.label}>{label}</Text>
+        <Pressable accessibilityRole="button" accessibilityLabel={label + ', ' + (selected?.name ?? 'Selecionar')} style={s.selectControl} onPress={() => {setQuery('');setVisible(true);}}>
+            <Text style={s.selectValue}>{selected?.name ?? 'Toque para buscar e selecionar'}</Text><Text style={s.muted}>Buscar ›</Text>
+        </Pressable>
+        <Modal visible={visible} animationType="slide" onRequestClose={() => setVisible(false)}>
+            <SafeAreaView style={s.page}><View style={s.pickerContainer}>
+                <Text style={s.heading}>{label}</Text>
+                <TextInput accessibilityLabel={'Buscar ' + label} placeholder="Nome, cidade, documento ou categoria…" placeholderTextColor="#6c7d73" style={s.search} value={query} onChangeText={setQuery} autoCorrect={false}/>
+                <Text style={s.resultCount}>{options.length} opção(ões) · ordem alfabética</Text>
+                <FlatList key={query} data={options} extraData={value} keyExtractor={item => typeof item.id + ':' + String(item.id)} keyboardShouldPersistTaps="handled" initialNumToRender={15}
+                    ListEmptyComponent={<Text style={s.muted}>Nenhum resultado. Tente outro termo ou cadastre um registro.</Text>}
+                    renderItem={({item}) => <Pressable accessibilityRole="button" accessibilityState={{selected:item.id === value}} style={[s.pickerRow,item.id === value && s.pickerSelected]} onPress={() => {onChange(item.id);setVisible(false);}}>
+                        <Text style={s.title}>{item.name}</Text>
+                        {!!item.document && <Text style={s.muted}>{item.document}</Text>}
+                        {!!item.city && <Text style={s.muted}>{item.city} {item.state}</Text>}
+                        {!!item.phone && <Text style={s.muted}>{item.phone}</Text>}
+                        {item.stock !== undefined && <Text style={s.muted}>{item.categoryName} · Estoque {item.stock} · {money(item.price)}</Text>}
+                    </Pressable>}/>
+                <Button title="Fechar seleção" secondary onPress={() => setVisible(false)}/>
+            </View></SafeAreaView>
+        </Modal>
+    </View>;
+}
 export default function App() {
     const [data,setData] = useState(null);
     const current = useRef(null);
@@ -50,6 +78,8 @@ export default function App() {
     const [history,setHistory] = useState(null);
     const [showActivity,setShowActivity] = useState(false);
     const [search,setSearch] = useState('');
+    const [visibleCount,setVisibleCount] = useState(20);
+    const [productCategory,setProductCategory] = useState(null);
     const [packingCategory,setPackingCategory] = useState(null);
     const [packingProduct,setPackingProduct] = useState(null);
     const [period,setPeriod] = useState(new Date().toISOString().slice(0,7));
@@ -78,6 +108,8 @@ export default function App() {
     }
     function open(collection,record = {}) {
         const draft = {...record};
+        delete draft.categoryName;
+        delete draft.clientName;
         if (collection === 'products') Object.assign(draft,{price:String((record.price ?? 0)/100),cost:String((record.cost ?? 0)/100)});
         if (collection === 'expenses') Object.assign(draft,{amount:String((record.amount ?? 0)/100),expenseDate:(record.date ?? new Date().toISOString()).slice(0,10)});
         if (collection === 'billing') Object.assign(draft,{final:String((record.final ?? total(record))/100),payment:record.payment ?? 'Pix'});
@@ -161,12 +193,14 @@ export default function App() {
     if (!data) return <SafeAreaView><Text>Carregando AgroTile…</Text></SafeAreaView>;
     const collection = tab === 'billing' ? 'orders' : tab;
     const records = ['reports','packing'].includes(tab) ? [] : data[collection].filter(r => tab === 'orders' ? r.final === undefined : tab === 'billing' ? r.final !== undefined : true);
-    const query = search.trim().toLocaleLowerCase('pt-BR');
-    const visibleRecords = records.filter(record => {
-        const client = data.clients.find(item => item.id === record.clientId);
-        return [record.id,record.name,record.legalName,record.document,record.phone,client?.name,...(record.items ?? []).map(item => item.name)]
-            .filter(value => value !== undefined).join(' ').toLocaleLowerCase('pt-BR').includes(query);
-    });
+    const query = search.trim();
+    const categoryNames = new Map(data.categories.map(category => [category.id,category.name]));
+    const clientNames = new Map(data.clients.map(client => [client.id,client.name]));
+    const productOptions = data.products.map(product => ({...product,categoryName:categoryNames.get(product.categoryId) ?? ''}));
+    const searchableRecords = records
+        .filter(record => tab !== 'products' || productCategory === null || record.categoryId === productCategory)
+        .map(record => ({...record,categoryName:categoryNames.get(record.categoryId),clientName:clientNames.get(record.clientId)}));
+    const visibleRecords = searchEntries(searchableRecords,query,['clients','products','categories'].includes(tab));
     const draft = editor?.draft;
     const overview = dashboard(data);
     const manifest = packingList(data, packingCategory, packingProduct);
@@ -216,15 +250,16 @@ export default function App() {
             </View>)}
         </View>
         <Text style={s.eyebrow}>GERENCIAR</Text>
-        <View style={s.menu}>{Object.entries(labels).map(([key,label]) => <Pressable key={key} accessibilityRole="button" accessibilityState={{selected:tab === key}} style={[s.menuItem,tab === key && s.menuSelected]} onPress={() => {setTab(key);setHistory(null);setSearch('');}}><Text style={[s.menuText,tab === key && s.menuSelectedText]}>{label}</Text></Pressable>)}</View>
+        <View style={s.menu}>{Object.entries(labels).map(([key,label]) => <Pressable key={key} accessibilityRole="button" accessibilityState={{selected:tab === key}} style={[s.menuItem,tab === key && s.menuSelected]} onPress={() => {setTab(key);setHistory(null);setSearch('');setVisibleCount(20);setProductCategory(null);}}><Text style={[s.menuText,tab === key && s.menuSelectedText]}>{label}</Text></Pressable>)}</View>
         <Text style={s.heading}>{labels[tab]}</Text>
         {!['reports','billing','packing'].includes(tab) && <Button title="Adicionar" onPress={() => open(tab)}/>}
         {!['reports','packing'].includes(tab) && <View>
-            <TextInput accessibilityLabel="Buscar registros" placeholder="Buscar nome, produto ou número…" placeholderTextColor="#6c7d73" style={s.search} value={search} onChangeText={setSearch}/>
-            <Text style={s.resultCount}>{visibleRecords.length} registro(s)</Text>
+            <TextInput accessibilityLabel="Buscar registros" placeholder="Nome, cidade, CPF/CNPJ, categoria…" placeholderTextColor="#6c7d73" style={s.search} value={search} onChangeText={value => {setSearch(value);setVisibleCount(20);}}/>
+            {tab === 'products' && <Select label="Filtrar por categoria" entries={[{id:null,name:'Todas as categorias'},...data.categories]} value={productCategory} onChange={id => {setProductCategory(id);setVisibleCount(20);}}/>}
+            <Text style={s.resultCount}>Mostrando {Math.min(visibleCount,visibleRecords.length)} de {visibleRecords.length} registro(s){['clients','products','categories'].includes(tab) ? ' · A–Z' : ''}</Text>
             {visibleRecords.length === 0 && <View style={s.emptyState}><Text style={s.title}>{query ? 'Nenhum resultado encontrado' : 'Vamos começar?'}</Text><Text style={s.muted}>{query ? 'Tente outro nome ou número.' : 'Os registros desta seção aparecerão aqui.'}</Text></View>}
         </View>}
-        {visibleRecords.map(record => <View key={record.id} style={s.card}>
+        {visibleRecords.slice(0,visibleCount).map(record => <View key={record.id} style={s.card}>
             {collection === 'orders' && <View style={[s.badge,record.final !== undefined && s.deliveredBadge]}><Text style={s.badgeText}>{record.final === undefined ? 'AGUARDANDO ENTREGA' : 'FATURADO'}</Text></View>}
             <Text style={s.title}>{collection === 'orders' ? '#' + record.id + ' · ' + data.clients.find(c => c.id === record.clientId)?.name : record.name}</Text>
             {collection === 'orders' && <><Text>{new Date(record.date).toLocaleDateString('pt-BR')} · {money(record.final ?? total(record))}</Text>{record.items.map((i,index) => <Text key={index}>{i.quantity} × {i.name} · {money(i.price)}</Text>)}<Text>{record.payment}</Text><Button title="Enviar por WhatsApp · PDF" onPress={() => pdf(record)}/>{record.final === undefined && <Button title="Pedido entregue" onPress={() => open('billing',record)}/>}</>}
@@ -241,13 +276,14 @@ export default function App() {
             <View style={s.row}><Button title="Editar" secondary onPress={() => open(collection,record)}/>{tab === 'billing' && <Button title="Editar pagamento" onPress={() => open('billing',record)}/>}<Button title="Excluir" onPress={() => drop(collection,record.id)}/>{collection === 'clients' && <Button title="Histórico" secondary onPress={() => setHistory(record.id)}/>}</View>
             {history === record.id && collection === 'clients' && data.orders.filter(o => o.clientId === record.id).map(o => <Text key={o.id}>#{o.id} · {new Date(o.date).toLocaleDateString('pt-BR')} · {o.final === undefined ? 'Pedido' : 'Faturado'} · {money(o.final ?? total(o))}</Text>)}
         </View>)}
+        {visibleRecords.length > visibleCount && <Button title="Mostrar mais 20 registros" secondary onPress={() => setVisibleCount(count => count + 20)}/>}
         {tab === 'packing' && <View style={s.card}>
             <Text style={s.title}>Romaneio para separação</Text>
             <Text>Itens de pedidos aguardando entrega. A categoria considerada é a do cadastro atual do produto.</Text>
             <Select label="Categoria" entries={data.categories} value={packingCategory} onChange={id => {setPackingCategory(id);setPackingProduct(null);}}/>
             {data.categories.length === 0 && <Text>Cadastre uma categoria para gerar um romaneio.</Text>}
             {manifestCategory && <>
-                <Select label="Produto" entries={[{id:null,name:'Todos os produtos'},...data.products.filter(product => product.categoryId === packingCategory)]} value={packingProduct} onChange={setPackingProduct}/>
+                <Select label="Produto" entries={[{id:null,name:'Todos os produtos'},...productOptions.filter(product => product.categoryId === packingCategory)]} value={packingProduct} onChange={setPackingProduct}/>
                 <Text>{manifest.orders.length} pedido(s) · {manifest.quantity} unidade(s)</Text>
                 {manifest.items.map(item => <Text key={item.productId}>{item.name} · {item.quantity} unidade(s)</Text>)}
                 {manifest.items.length === 0 ? <Text>Nenhum item aguardando entrega neste filtro.</Text> : <Button title="Gerar PDF e compartilhar" onPress={sharePackingList}/>}
@@ -275,7 +311,7 @@ export default function App() {
         {editor?.collection === 'billing' && <><Field label="Valor final (R$)" numeric value={draft.final} onChangeText={v => update('final',v)}/><Field label="Forma de pagamento" value={draft.payment} onChangeText={v => update('payment',v)}/></>}
         {editor?.collection === 'orders' && <>
             <Select label="Cliente" entries={data.clients} value={draft.clientId} onChange={v => update('clientId',v)}/>
-            <Select label="Adicionar produto" entries={data.products} onChange={id => {const product = data.products.find(p => p.id === id);update('items',[...draft.items,{productId:id,name:product.name,quantity:1,price:product.price}]);}}/>
+            <Select label="Adicionar produto" entries={productOptions} onChange={id => {const product = data.products.find(p => p.id === id);update('items',[...draft.items,{productId:id,name:product.name,quantity:1,price:product.price}]);}}/>
             {draft.items.map((item,index) => <View key={index} style={s.card}><Text>{item.name}</Text>
                 <Field label="Quantidade" numeric value={item.quantity} onChangeText={value => update('items',draft.items.map((i,n) => n === index ? {...i,quantity:value} : i))}/>
                 <Field label="Preço unitário (R$)" numeric value={item.priceText ?? String(item.price/100)} onChangeText={value => update('items',draft.items.map((i,n) => n === index ? {...i,priceText:value} : i))}/>
@@ -293,6 +329,11 @@ export default function App() {
     </ScrollView></SafeAreaView></Modal></SafeAreaView>;
 }
 const s = StyleSheet.create({
+    pickerContainer:{flex:1,padding:18,paddingBottom:24},
+    pickerRow:{padding:16,borderBottomWidth:1,borderBottomColor:'#dce3d6',backgroundColor:'#ffffff',gap:4},
+    pickerSelected:{backgroundColor:'#e2efe2'},
+    selectControl:{backgroundColor:'#ffffff',borderWidth:1,borderColor:'#bdcbb7',padding:15,borderRadius:12,marginVertical:8,minHeight:54,gap:6},
+    selectValue:{fontSize:16,fontWeight:'600',color:'#203b2e'},
     page:{flex:1,backgroundColor:'#f4f5ef',paddingTop:28},
     content:{padding:18,paddingBottom:48},
     hero:{backgroundColor:'#123c2e',borderRadius:24,padding:24,marginBottom:16},
