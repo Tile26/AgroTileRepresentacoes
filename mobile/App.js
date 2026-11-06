@@ -3,11 +3,15 @@ import {Alert, SafeAreaView, ScrollView, View, Text, TextInput, Pressable, Modal
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
+import * as Crypto from 'expo-crypto';
+import {loadStored, replaceStored, validateState} from './storage';
+import {percent} from './business';
+import {EntryScreen, BackupScreen, PricingFields} from './OperationsUI';
 import representedBrands from './assets/represented-brands.json';
 import {searchEntries} from './search';
-import {empty, money, numeric, change, saveOrder, remove, total, report, dashboard, customerActivity, packingList} from './domain';
+import {empty, money, numeric, change, saveOrder, remove, total, report, dashboard, customerActivity, packingList, bonuses} from './domain';
 
-const labels = {clients:'Clientes',categories:'Categorias',products:'Produtos',orders:'Pedidos',billing:'Faturamento',expenses:'Despesas',reports:'Relatórios',packing:'Romaneio'};
+const labels = {home:'Início',settings:'Configurações',entries:'Entradas',clients:'Clientes',categories:'Categorias',products:'Produtos',orders:'Pedidos',billing:'Faturamento',expenses:'Despesas',reports:'Relatórios',packing:'Romaneio'};
 const storageKey = 'agrotile-v1';
 const seller = {
     name: 'Dionatan Stadler de Freitas',
@@ -73,7 +77,7 @@ export default function App() {
     const [data,setData] = useState(null);
     const current = useRef(null);
     const saving = useRef(false);
-    const [tab,setTab] = useState('orders');
+    const [tab,setTab] = useState('home');
     const [editor,setEditor] = useState(null);
     const [history,setHistory] = useState(null);
     const [showActivity,setShowActivity] = useState(false);
@@ -83,23 +87,31 @@ export default function App() {
     const [packingCategory,setPackingCategory] = useState(null);
     const [packingProduct,setPackingProduct] = useState(null);
     const [period,setPeriod] = useState(new Date().toISOString().slice(0,7));
-    useEffect(() => { AsyncStorage.getItem(storageKey).then(raw => {
-        const loaded = raw ? JSON.parse(raw) : empty();
-        if (loaded.version !== 1) throw Error('Versão dos dados desconhecida.');
-        current.current = loaded;
-        setData(loaded);
-    }).catch(error => Alert.alert('Não foi possível carregar os dados',error.message)); },[]);
+    useEffect(() => { loadStored(AsyncStorage,empty).then(loaded => {
+        current.current = loaded; setData(loaded);
+    }).catch(error => Alert.alert('Não foi possível carregar os dados',error.message + ' Seus dados foram mantidos.')); },[]);
     async function commit(action) {
         if (saving.current) return;
         saving.current = true;
         try {
-            const next = change(current.current,action);
+            const next = validateState(change(current.current,action));
             await AsyncStorage.setItem(storageKey,JSON.stringify(next));
             current.current = next;
             setData(next);
             setEditor(null);
+            return true;
         } catch(error) { Alert.alert('Verifique os dados',error.message); }
         finally { saving.current = false; }
+    }
+    async function restore(next) {
+        if (saving.current) return false;
+        saving.current = true;
+        try {
+            const restored = await replaceStored(AsyncStorage,next);
+            current.current = restored; setData(restored); setEditor(null); setHistory(null);
+            return true;
+        } catch(error) {Alert.alert('Restauração não aplicada',error.message);return false;}
+        finally {saving.current = false;}
     }
     function drop(collection,id) {
         Alert.alert('Confirmar exclusão','Excluir este registro? Pedidos excluídos devolvem os itens ao estoque e saem dos relatórios.',[
@@ -110,7 +122,7 @@ export default function App() {
         const draft = {...record};
         delete draft.categoryName;
         delete draft.clientName;
-        if (collection === 'products') Object.assign(draft,{price:String((record.price ?? 0)/100),cost:String((record.cost ?? 0)/100)});
+        if (collection === 'products') Object.assign(draft,{stock:record.stock ?? 0,price:String((record.price ?? 0)/100),cost:String((record.cost ?? 0)/100),pricingMethod:record.pricingMethod ?? 'margin',keepRate:false,rate:percent(record.cost ?? 0,record.price ?? 0,record.pricingMethod)?.toFixed(2) ?? ''});
         if (collection === 'expenses') Object.assign(draft,{amount:String((record.amount ?? 0)/100),expenseDate:(record.date ?? new Date().toISOString()).slice(0,10)});
         if (collection === 'billing') Object.assign(draft,{final:String((record.final ?? total(record))/100),payment:record.payment ?? 'Pix'});
         if (collection === 'orders') draft.items = (record.items ?? []).map(i => ({...i}));
@@ -137,7 +149,12 @@ export default function App() {
                 if (record.state && !/^(AC|AL|AP|AM|BA|CE|DF|ES|GO|MA|MT|MS|MG|PA|PB|PR|PE|PI|RJ|RN|RS|RO|RR|SC|SP|SE|TO)$/.test(record.state)) throw Error('Informe uma UF válida, como PR.');
                 if (record.postalCode && !/^\d{5}-?\d{3}$/.test(record.postalCode)) throw Error('Informe o CEP com 8 dígitos.');
             }
+            if (collection === 'categories') record.bonusEnabled = draft.bonusEnabled ?? false;
             if (collection === 'products') {
+                if (draft.pricingError) throw Error(draft.pricingError);
+                record.reference = String(draft.reference ?? '').trim(); record.barcode = String(draft.barcode ?? '').trim();
+                record.pricingMethod = draft.pricingMethod ?? 'margin';
+                delete record.rate; delete record.keepRate; delete record.pricingError;
                 if (!state.categories.some(c => c.id === draft.categoryId)) throw Error('Selecione uma categoria.');
                 Object.assign(record,{stock:numeric(draft.stock),price:numeric(draft.price,true),cost:numeric(draft.cost,true)});
             }
@@ -162,7 +179,7 @@ export default function App() {
                 + representedBrands.map(brand => '<div style="flex:1;min-width:0;text-align:center"><img src="' + brand.uri + '" alt="' + escape(brand.name) + '" style="width:100%;height:86px;object-fit:contain;display:block"></div>').join('')
                 + '</div>';
             const sellerDetails = '<p><strong>Vendedor</strong> · ' + escape(seller.name) + '<br>Telefone · ' + escape(seller.phone) + '<br>' + escape(seller.city) + '</p>';
-            const html = '<html><head><meta charset="utf-8"><style>body{font-family:Arial;color:#203b2e;padding:30px;font-size:12px}h1{background:#123c2e;color:white;padding:22px;border-bottom:5px solid #cdb36a;font-size:25px}h2{color:#123c2e;margin-top:22px}table{border-collapse:collapse;width:100%;margin-top:18px}th{background:#eaf0e3;text-align:left}th,td{padding:10px;border-bottom:1px solid #dce3d6}tr{page-break-inside:avoid}hr{border:0;border-top:2px solid #cdb36a;margin-top:24px}p{line-height:1.5}</style></head><body>' + brandHeader + '<h1>AgroTile Representações</h1><h2>Pedido #' + order.id + '</h2><p>' + escape(client?.name) + '</p>' + clientDetails + '<p>' + (client?.needsInvoice ? 'Cliente solicita nota fiscal' : '') + '</p><p>' + new Date(order.date).toLocaleDateString('pt-BR') + '</p><table width="100%"><tr><th>Produto</th><th>Qtd.</th><th>Unitário</th><th>Total</th></tr>' + order.items.map(i => '<tr><td>' + escape(i.name) + '</td><td>' + i.quantity + '</td><td>' + money(i.price) + '</td><td>' + money(i.price*i.quantity) + '</td></tr>').join('') + '</table><h2>Total ' + money(order.final ?? total(order)) + '</h2><p>' + escape(order.payment ?? 'Pedido aguardando entrega') + '</p><hr>' + sellerDetails + '</body></html>';
+            const html = '<html><head><meta charset="utf-8"><style>body{font-family:Arial;color:#203b2e;padding:30px;font-size:12px}h1{background:#123c2e;color:white;padding:22px;border-bottom:5px solid #cdb36a;font-size:25px}h2{color:#123c2e;margin-top:22px}table{border-collapse:collapse;width:100%;margin-top:18px}th{background:#eaf0e3;text-align:left}th,td{padding:10px;border-bottom:1px solid #dce3d6}tr{page-break-inside:avoid}hr{border:0;border-top:2px solid #cdb36a;margin-top:24px}p{line-height:1.5}</style></head><body>' + brandHeader + '<h1>AgroTile Representações</h1><h2>Pedido #' + order.id + '</h2><p>' + escape(client?.name) + '</p>' + clientDetails + '<p>' + (client?.needsInvoice ? 'Cliente solicita nota fiscal' : '') + '</p><p>' + new Date(order.date).toLocaleDateString('pt-BR') + '</p><table width="100%"><tr><th>Produto</th><th>Qtd. cobrada</th><th>Bonificação</th><th>Unitário</th><th>Total</th></tr>' + order.items.map(i => '<tr><td>' + escape(i.name) + '</td><td>' + i.quantity + '</td><td>' + (i.bonus ?? 0) + '</td><td>' + money(i.price) + '</td><td>' + money(i.price*i.quantity) + '</td></tr>').join('') + '</table><h2>Total ' + money(order.final ?? total(order)) + '</h2><p>Resumo de Bonificações: ' + bonuses(order).quantity + ' unidades · Valor bonificado ' + money(bonuses(order).value) + '</p><p>' + escape(order.payment ?? 'Pedido aguardando entrega') + '</p><hr>' + sellerDetails + '</body></html>';
             const file = await Print.printToFileAsync({html});
             await Sharing.shareAsync(file.uri,{mimeType:'application/pdf',dialogTitle:'Enviar pedido por WhatsApp',UTI:'com.adobe.pdf'});
         } catch(error) { Alert.alert('Compartilhar PDF',error.message); }
@@ -192,7 +209,7 @@ export default function App() {
     }
     if (!data) return <SafeAreaView><Text>Carregando AgroTile…</Text></SafeAreaView>;
     const collection = tab === 'billing' ? 'orders' : tab;
-    const records = ['reports','packing'].includes(tab) ? [] : data[collection].filter(r => tab === 'orders' ? r.final === undefined : tab === 'billing' ? r.final !== undefined : true);
+    const records = ['home','settings','entries','reports','packing'].includes(tab) ? [] : data[collection].filter(r => tab === 'orders' ? r.final === undefined : tab === 'billing' ? r.final !== undefined : true);
     const query = search.trim();
     const categoryNames = new Map(data.categories.map(category => [category.id,category.name]));
     const clientNames = new Map(data.clients.map(client => [client.id,client.name]));
@@ -218,6 +235,7 @@ export default function App() {
     weekEnd.setDate(weekEnd.getDate()+7);
     const weekly = report(data,weekStart.toISOString(),weekEnd.toISOString());
     return <SafeAreaView style={s.page}><ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={s.content}>
+        {tab === 'home' && <>
         <View style={s.hero}>
             <View style={s.brandRow}><View style={s.monogram}><Text style={s.monogramText}>AT</Text></View><View><Text style={s.brand}>AgroTile</Text><Text style={s.subtitle}>REPRESENTAÇÕES</Text></View></View>
             <View style={s.heroDivider}/>
@@ -249,11 +267,15 @@ export default function App() {
                 {!!entry.client.phone && <Text>Telefone · {entry.client.phone}</Text>}
             </View>)}
         </View>
-        <Text style={s.eyebrow}>GERENCIAR</Text>
-        <View style={s.menu}>{Object.entries(labels).map(([key,label]) => <Pressable key={key} accessibilityRole="button" accessibilityState={{selected:tab === key}} style={[s.menuItem,tab === key && s.menuSelected]} onPress={() => {setTab(key);setHistory(null);setSearch('');setVisibleCount(20);setProductCategory(null);}}><Text style={[s.menuText,tab === key && s.menuSelectedText]}>{label}</Text></Pressable>)}</View>
+        </>}
+        <Text style={s.eyebrow}>AGROTILE · GERENCIAR</Text>
+        <View style={s.menu}>{Object.entries(labels).filter(([key]) => key !== 'entries').map(([key,label]) => <Pressable key={key} accessibilityRole="button" accessibilityState={{selected:tab === key}} style={[s.menuItem,tab === key && s.menuSelected]} onPress={() => {setTab(key);setHistory(null);setSearch('');setVisibleCount(20);setProductCategory(null);}}><Text style={[s.menuText,tab === key && s.menuSelectedText]}>{label}</Text></Pressable>)}</View>
         <Text style={s.heading}>{labels[tab]}</Text>
-        {!['reports','billing','packing'].includes(tab) && <Button title="Adicionar" onPress={() => open(tab)}/>}
-        {!['reports','packing'].includes(tab) && <View>
+        {tab === 'products' && <Button title="Entrada de produtos e relatórios" onPress={() => setTab('entries')}/>}
+        {tab === 'entries' && <><Button title="Voltar para Produtos" secondary onPress={() => setTab('products')}/><EntryScreen data={data} commit={commit} openProduct={() => open('products')} Button={Button} Field={Field} Select={Select} styles={s}/></>}
+        {tab === 'settings' && <BackupScreen data={data} restore={restore} Button={Button} styles={s}/>}
+        {!['home','settings','entries','reports','billing','packing'].includes(tab) && <Button title="Adicionar" onPress={() => open(tab)}/>}
+        {!['home','settings','entries','reports','packing'].includes(tab) && <View>
             <TextInput accessibilityLabel="Buscar registros" placeholder="Nome, cidade, CPF/CNPJ, categoria…" placeholderTextColor="#6c7d73" style={s.search} value={search} onChangeText={value => {setSearch(value);setVisibleCount(20);}}/>
             {tab === 'products' && <Select label="Filtrar por categoria" entries={[{id:null,name:'Todas as categorias'},...data.categories]} value={productCategory} onChange={id => {setProductCategory(id);setVisibleCount(20);}}/>}
             <Text style={s.resultCount}>Mostrando {Math.min(visibleCount,visibleRecords.length)} de {visibleRecords.length} registro(s){['clients','products','categories'].includes(tab) ? ' · A–Z' : ''}</Text>
@@ -262,7 +284,7 @@ export default function App() {
         {visibleRecords.slice(0,visibleCount).map(record => <View key={record.id} style={s.card}>
             {collection === 'orders' && <View style={[s.badge,record.final !== undefined && s.deliveredBadge]}><Text style={s.badgeText}>{record.final === undefined ? 'AGUARDANDO ENTREGA' : 'FATURADO'}</Text></View>}
             <Text style={s.title}>{collection === 'orders' ? '#' + record.id + ' · ' + data.clients.find(c => c.id === record.clientId)?.name : record.name}</Text>
-            {collection === 'orders' && <><Text>{new Date(record.date).toLocaleDateString('pt-BR')} · {money(record.final ?? total(record))}</Text>{record.items.map((i,index) => <Text key={index}>{i.quantity} × {i.name} · {money(i.price)}</Text>)}<Text>{record.payment}</Text><Button title="Enviar por WhatsApp · PDF" onPress={() => pdf(record)}/>{record.final === undefined && <Button title="Pedido entregue" onPress={() => open('billing',record)}/>}</>}
+            {collection === 'orders' && <><Text>{new Date(record.date).toLocaleDateString('pt-BR')} · {money(record.final ?? total(record))}</Text>{record.items.map(i => <Text key={i.itemId}>{i.quantity} × {i.name} · {money(i.price)} · Bonificação {i.bonus ?? 0} un.</Text>)}<Text>Resumo de Bonificações · {bonuses(record).quantity} un. · {money(bonuses(record).value)}</Text><Text>{record.payment}</Text><Button title="Enviar por WhatsApp · PDF" onPress={() => pdf(record)}/>{record.final === undefined && <Button title="Pedido entregue" onPress={() => open('billing',record)}/>}</>}
             {collection === 'clients' && <View>
                 <Text>{activityByClient.get(record.id)?.days === null ? 'Sem compras faturadas' : activityByClient.get(record.id)?.days + ' dia(s) sem comprar'}</Text>
                 {!!record.legalName && <Text>{record.legalName}</Text>}
@@ -271,7 +293,7 @@ export default function App() {
                 {!!record.city && <Text>{record.city} {record.state}</Text>}
                 {record.needsInvoice && <Text>Solicita nota fiscal</Text>}
             </View>}
-            {collection === 'products' && <Text>{record.stock} unidades · Venda {money(record.price)} · Custo {money(record.cost)}</Text>}
+            {collection === 'products' && <Text>{record.stock} unidades · Venda {money(record.price)} · Custo {money(record.cost)}{'\n'}Referência {record.reference || '—'} · Código {record.barcode || '—'}</Text>}
             {collection === 'expenses' && <Text>{money(record.amount)} · {new Date(record.date).toLocaleDateString('pt-BR')}</Text>}
             <View style={s.row}><Button title="Editar" secondary onPress={() => open(collection,record)}/>{tab === 'billing' && <Button title="Editar pagamento" onPress={() => open('billing',record)}/>}<Button title="Excluir" onPress={() => drop(collection,record.id)}/>{collection === 'clients' && <Button title="Histórico" secondary onPress={() => setHistory(record.id)}/>}</View>
             {history === record.id && collection === 'clients' && data.orders.filter(o => o.clientId === record.id).map(o => <Text key={o.id}>#{o.id} · {new Date(o.date).toLocaleDateString('pt-BR')} · {o.final === undefined ? 'Pedido' : 'Faturado'} · {money(o.final ?? total(o))}</Text>)}
@@ -306,27 +328,45 @@ export default function App() {
             <Select label="Solicita nota fiscal?" entries={[{id:false,name:'Não'},{id:true,name:'Sim'}]} value={draft.needsInvoice ?? false} onChange={v => update('needsInvoice',v)}/>
             {clientFields.map(([key,label]) => <Field key={key} label={label} value={draft[key]} onChangeText={v => update(key,v)}/>)}
         </>}
-        {editor?.collection === 'products' && <><Select label="Categoria" entries={data.categories} value={draft.categoryId} onChange={v => update('categoryId',v)}/>{[['stock','Estoque disponível'],['cost','Custo unitário (R$)'],['price','Preço de venda (R$)']].map(([key,label]) => <Field key={key} label={label} numeric value={draft[key]} onChangeText={v => update(key,v)}/>)}</>}
+        {editor?.collection === 'categories' && <Select label="Gerar Bonificação" entries={[{id:false,name:'Desativado'},{id:true,name:'Ativado'}]} value={draft.bonusEnabled ?? false} onChange={v => update('bonusEnabled',v)}/>}
+        {editor?.collection === 'products' && <>
+            <Select label="Categoria" entries={data.categories} value={draft.categoryId} onChange={v => update('categoryId',v)}/>
+            <Field label="Referência" value={draft.reference} onChangeText={v => update('reference',v)}/>
+            <Field label="Código de Barras" value={draft.barcode} onChangeText={v => update('barcode',v)}/>
+            <Field label="Estoque disponível" numeric value={draft.stock} onChangeText={v => update('stock',v)}/>
+            <PricingFields draft={draft} setDraft={next => setEditor(old => ({...old,draft:next}))} Field={Field} Select={Select}/>
+        </>}
         {editor?.collection === 'expenses' && <><Field label="Valor (R$)" numeric value={draft.amount} onChangeText={v => update('amount',v)}/><Field label="Data (AAAA-MM-DD)" value={draft.expenseDate} onChangeText={v => update('expenseDate',v)}/></>}
         {editor?.collection === 'billing' && <><Field label="Valor final (R$)" numeric value={draft.final} onChangeText={v => update('final',v)}/><Field label="Forma de pagamento" value={draft.payment} onChangeText={v => update('payment',v)}/></>}
         {editor?.collection === 'orders' && <>
             <Select label="Cliente" entries={data.clients} value={draft.clientId} onChange={v => update('clientId',v)}/>
-            <Select label="Adicionar produto" entries={productOptions} onChange={id => {const product = data.products.find(p => p.id === id);update('items',[...draft.items,{productId:id,name:product.name,quantity:1,price:product.price}]);}}/>
-            {draft.items.map((item,index) => <View key={index} style={s.card}><Text>{item.name}</Text>
+            <Select label="Adicionar produto" entries={productOptions} onChange={id => {const product = data.products.find(p => p.id === id);update('items',[{itemId:Crypto.randomUUID(),productId:id,name:product.name,quantity:1,bonus:0,price:product.price},...draft.items]);}}/>
+            {draft.items.map((item,index) => <View key={item.itemId} style={s.card}><Text>{item.name}</Text>
                 <Field label="Quantidade" numeric value={item.quantity} onChangeText={value => update('items',draft.items.map((i,n) => n === index ? {...i,quantity:value} : i))}/>
                 <Field label="Preço unitário (R$)" numeric value={item.priceText ?? String(item.price/100)} onChangeText={value => update('items',draft.items.map((i,n) => n === index ? {...i,priceText:value} : i))}/>
+                {(Number(item.bonus) > 0 || data.categories.find(c => c.id === data.products.find(p => p.id === item.productId)?.categoryId)?.bonusEnabled) && <Field label="Bonificação (unidades gratuitas)" numeric value={item.bonus ?? 0} onChangeText={value => update('items',draft.items.map((i,n) => n === index ? {...i,bonus:value} : i))}/>}
                 <Button title="Remover item" onPress={() => Alert.alert('Remover item?','A alteração será aplicada ao salvar.',[{text:'Cancelar'},{text:'Remover',onPress:() => update('items',draft.items.filter((_,n) => n !== index))}])}/>
             </View>)}
+            <OrderSummary draft={draft}/>
         </>}
         <Button title="Salvar" onPress={() => {
             if (editor.collection === 'orders') {
                 try {
-                    const parsed = {...draft,items:draft.items.map(i => ({...i,quantity:numeric(i.quantity),price:i.priceText === undefined ? i.price : numeric(i.priceText,true)}))};
+                    const parsed = {...draft,items:draft.items.map(i => ({...i,quantity:numeric(i.quantity),bonus:numeric(i.bonus ?? 0),price:i.priceText === undefined ? i.price : numeric(i.priceText,true)}))};
                     commit(state => saveOrder(state,parsed));
                 } catch(error) { Alert.alert('Verifique os dados',error.message); }
             } else save();
         }}/><Button title="Cancelar" secondary onPress={() => setEditor(null)}/>
     </ScrollView></SafeAreaView></Modal></SafeAreaView>;
+}
+function OrderSummary({draft}) {
+    let order;
+    try {
+        order = {items:draft.items.map(i => ({...i,quantity:numeric(i.quantity),bonus:numeric(i.bonus ?? 0),price:i.priceText === undefined ? i.price : numeric(i.priceText,true)}))};
+    } catch {order = null;}
+    if (!order) return <Text>Complete quantidades e preços para ver o resumo.</Text>;
+    const bonus = bonuses(order);
+    return <View><Text style={s.title}>Total do pedido {money(total(order))}</Text><Text>Resumo de Bonificações · {bonus.quantity} unidades · {money(bonus.value)}</Text></View>;
 }
 const s = StyleSheet.create({
     pickerContainer:{flex:1,padding:18,paddingBottom:24},

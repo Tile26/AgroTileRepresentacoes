@@ -1,10 +1,15 @@
 {
   "name": "mobile",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "main": "index.js",
   "dependencies": {
+    "@noble/ciphers": "^2.4.0",
+    "@noble/hashes": "^2.4.0",
     "@react-native-async-storage/async-storage": "^2.2.0",
     "expo": "~58.0.22",
+    "expo-crypto": "~58.0.7",
+    "expo-document-picker": "~58.0.4",
+    "expo-file-system": "~58.0.13",
     "expo-print": "~58.0.8",
     "expo-sharing": "~58.0.21",
     "expo-status-bar": "~58.0.4",
@@ -17,7 +22,9 @@
     "android": "expo start --android",
     "ios": "expo start --ios",
     "web": "expo start --web",
-    "lint": "expo lint"
+    "lint": "eslint App.js domain.js search.js business.js storage.js backup.js OperationsUI.js --rule no-undef:error",
+    "test": "node domain.test.mjs && node search.test.mjs && node features.test.mjs",
+    "typecheck": "tsc --noEmit --allowJs --jsx react-jsx --skipLibCheck --resolveJsonModule --esModuleInterop App.js domain.js search.js business.js storage.js backup.js OperationsUI.js"
   },
   "private": true,
   "devDependencies": {
