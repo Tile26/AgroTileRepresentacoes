@@ -12,7 +12,9 @@ export async function encryptBackup(state, password, randomBytes) {
     const key = await pbkdf2Async(sha256,utf8ToBytes(password),salt,{c:iterations,dkLen:32});
     try {
         const payload = utf8ToBytes(JSON.stringify({app:'AgroTile',version:1,createdAt:new Date().toISOString(),data}));
-        return JSON.stringify({format:'agrotile-encrypted',version:1,kdf:'PBKDF2-SHA256',iterations,cipher:'AES-256-GCM',salt:bytesToHex(salt),nonce:bytesToHex(nonce),ciphertext:bytesToHex(gcm(key,nonce,aad).encrypt(payload))});
+        const encrypted = JSON.stringify({format:'agrotile-encrypted',version:1,kdf:'PBKDF2-SHA256',iterations,cipher:'AES-256-GCM',salt:bytesToHex(salt),nonce:bytesToHex(nonce),ciphertext:bytesToHex(gcm(key,nonce,aad).encrypt(payload))});
+        if (encrypted.length > 40*1024*1024) throw Error('Backup excede o limite de 40 MB. Nenhum arquivo foi salvo.');
+        return encrypted;
     } finally { key.fill(0); }
 }
 export async function decryptBackup(text, password) {

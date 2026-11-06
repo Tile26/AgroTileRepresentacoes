@@ -4,6 +4,7 @@ export const storageKey = 'agrotile-v1';
 export function validateState(input) {
     if (!input || ![1,2].includes(input.version)) throw Error('Versão de dados incompatível.');
     for (const key of ['clients','categories','products','orders','expenses']) if (!Array.isArray(input[key])) throw Error('Coleção ausente: ' + key);
+    if (input.version === 2 && (!Array.isArray(input.entries) || !input.settings)) throw Error('Backup incompleto: entradas ou configurações ausentes.');
     const state = migrate(input);
     const integer = n => Number.isSafeInteger(n) && n >= 0;
     const timestamp = d => typeof d === 'string' && Number.isFinite(Date.parse(d));

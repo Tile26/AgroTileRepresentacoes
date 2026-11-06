@@ -66,6 +66,8 @@ storage.fail=null;await replaceStored(storage,entries);assert.equal(JSON.parse(s
 const orphan=structuredClone(entries);orphan.products[0].categoryId=999;assert.throws(()=>validateState(orphan));
 const duplicate=structuredClone(entries);duplicate.products.push({...duplicate.products[0]});assert.throws(()=>validateState(duplicate));
 assert.throws(()=>validateState({...entries,version:100}));
+assert.throws(()=>validateState({...entries,entries:undefined}));
+assert.throws(()=>validateState({...entries,settings:undefined}));
 const password='teste-seguro-2026';const encrypted=await encryptBackup(entries,password,async size=>new Uint8Array(randomBytes(size)));
 assert.ok(!encrypted.includes('José'));assert.deepEqual((await decryptBackup(encrypted,password)).data,entries);
 await assert.rejects(()=>decryptBackup(encrypted,'senha-incorreta-2026'));
