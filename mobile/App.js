@@ -57,13 +57,15 @@ function Select({label,entries,value,onChange}) {
         <Modal visible={visible} animationType="slide" onRequestClose={() => setVisible(false)}>
             <SafeAreaView style={s.page}><View style={s.pickerContainer}>
                 <Text style={s.heading}>{label}</Text>
-                <TextInput accessibilityLabel={'Buscar ' + label} placeholder="Nome, cidade, documento ou categoria…" placeholderTextColor="#6c7d73" style={s.search} value={query} onChangeText={setQuery} autoCorrect={false}/>
+                <TextInput accessibilityLabel={'Buscar ' + label} placeholder="Nome, referência, código ou documento…" placeholderTextColor="#6c7d73" style={s.search} value={query} onChangeText={setQuery} autoCorrect={false}/>
                 <Text style={s.resultCount}>{options.length} opção(ões) · ordem alfabética</Text>
                 <FlatList key={query} data={options} extraData={value} keyExtractor={item => typeof item.id + ':' + String(item.id)} keyboardShouldPersistTaps="handled" initialNumToRender={15}
                     ListEmptyComponent={<Text style={s.muted}>Nenhum resultado. Tente outro termo ou cadastre um registro.</Text>}
                     renderItem={({item}) => <Pressable accessibilityRole="button" accessibilityState={{selected:item.id === value}} style={[s.pickerRow,item.id === value && s.pickerSelected]} onPress={() => {onChange(item.id);setVisible(false);}}>
                         <Text style={s.title}>{item.name}</Text>
                         {!!item.document && <Text style={s.muted}>{item.document}</Text>}
+                        {!!item.reference && <Text style={s.muted}>Referência · {item.reference}</Text>}
+                        {!!item.barcode && <Text style={s.muted}>Código · {item.barcode}</Text>}
                         {!!item.city && <Text style={s.muted}>{item.city} {item.state}</Text>}
                         {!!item.phone && <Text style={s.muted}>{item.phone}</Text>}
                         {item.stock !== undefined && <Text style={s.muted}>{item.categoryName} · Estoque {item.stock} · {money(item.price)}</Text>}
@@ -276,7 +278,7 @@ export default function App() {
         {tab === 'settings' && <BackupScreen data={data} restore={restore} Button={Button} styles={s}/>}
         {!['home','settings','entries','reports','billing','packing'].includes(tab) && <Button title="Adicionar" onPress={() => open(tab)}/>}
         {!['home','settings','entries','reports','packing'].includes(tab) && <View>
-            <TextInput accessibilityLabel="Buscar registros" placeholder="Nome, cidade, CPF/CNPJ, categoria…" placeholderTextColor="#6c7d73" style={s.search} value={search} onChangeText={value => {setSearch(value);setVisibleCount(20);}}/>
+            <TextInput accessibilityLabel="Buscar registros" placeholder="Nome, referência, código, CPF/CNPJ…" placeholderTextColor="#6c7d73" style={s.search} value={search} onChangeText={value => {setSearch(value);setVisibleCount(20);}}/>
             {tab === 'products' && <Select label="Filtrar por categoria" entries={[{id:null,name:'Todas as categorias'},...data.categories]} value={productCategory} onChange={id => {setProductCategory(id);setVisibleCount(20);}}/>}
             <Text style={s.resultCount}>Mostrando {Math.min(visibleCount,visibleRecords.length)} de {visibleRecords.length} registro(s){['clients','products','categories'].includes(tab) ? ' · A–Z' : ''}</Text>
             {visibleRecords.length === 0 && <View style={s.emptyState}><Text style={s.title}>{query ? 'Nenhum resultado encontrado' : 'Vamos começar?'}</Text><Text style={s.muted}>{query ? 'Tente outro nome ou número.' : 'Os registros desta seção aparecerão aqui.'}</Text></View>}
@@ -344,7 +346,7 @@ export default function App() {
             {draft.items.map((item,index) => <View key={item.itemId} style={s.card}><Text>{item.name}</Text>
                 <Field label="Quantidade" numeric value={item.quantity} onChangeText={value => update('items',draft.items.map((i,n) => n === index ? {...i,quantity:value} : i))}/>
                 <Field label="Preço unitário (R$)" numeric value={item.priceText ?? String(item.price/100)} onChangeText={value => update('items',draft.items.map((i,n) => n === index ? {...i,priceText:value} : i))}/>
-                {(Number(item.bonus) > 0 || data.categories.find(c => c.id === data.products.find(p => p.id === item.productId)?.categoryId)?.bonusEnabled) && <Field label="Bonificação (unidades gratuitas)" numeric value={item.bonus ?? 0} onChangeText={value => update('items',draft.items.map((i,n) => n === index ? {...i,bonus:value} : i))}/>}
+                {(Number(item.bonus) > 0 || data.orders.find(o => o.id === draft.id)?.items.some(i => i.itemId === item.itemId && (i.bonus ?? 0) > 0) || data.categories.find(c => c.id === data.products.find(p => p.id === item.productId)?.categoryId)?.bonusEnabled) && <Field label="Bonificação (unidades gratuitas)" numeric value={item.bonus ?? 0} onChangeText={value => update('items',draft.items.map((i,n) => n === index ? {...i,bonus:value} : i))}/>}
                 <Button title="Remover item" onPress={() => Alert.alert('Remover item?','A alteração será aplicada ao salvar.',[{text:'Cancelar'},{text:'Remover',onPress:() => update('items',draft.items.filter((_,n) => n !== index))}])}/>
             </View>)}
             <OrderSummary draft={draft}/>
