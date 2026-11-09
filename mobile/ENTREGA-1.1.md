@@ -62,3 +62,16 @@ Novo APK necessário por módulos nativos de criptografia/seleção de arquivo. 
 Instalar atualização sobre o APK existente, sem desinstalar/limpar dados; conferir clientes e pedidos após migração. Testar seleção de clientes/produtos, teclado e formulários, bonificação com baixa/devolução, entrada e estorno, PDF e WhatsApp, CSV no Excel, exportação/importação em outro celular, senha errada e cancelamento. Medir o tempo de derivação da senha no aparelho real. Não foi possível executar esses testes sem dispositivo/emulador Android conectado.
 
 Não há decisão comercial pendente que bloqueie a implementação. Publicação em produção depende de autorização e validação no aparelho. Dados reais não foram restaurados, apagados ou migrados por este ambiente de desenvolvimento.
+
+## Artefatos de teste gerados em 06/11/2026
+
+- EAS Android **FINISHED**, build `ae0ef50e-b086-4309-8fb1-e15906774216`, versão 1.1.0, versionCode 3, runtime 1.1.0, distribuição interna e canal preview. Mesma credencial de assinatura usada anteriormente, sem alteração de credenciais. Fonte incorporada no APK: `6cd97283100651b709a340488548055aea3270fb`.
+- APK Expo: https://expo.dev/artifacts/eas/4jVvNWTPgjMGXMF7mRu-Ei3mUiUJQ5XUhVSvQ73kT6g.apk
+- Ajustes finais disponíveis por atualização no canal preview, runtime 1.1.0: grupo `101b3a5a-9f42-4726-b0cd-5bab93839091`, commit `415c382eadb3d57c8c2b99b8c8b6462facd43cf9`. Abrir com internet e reabrir para aplicar. O APK 1.0.0 não recebe esse runtime.
+- SHA-256 do APK baixado: `fea05cec4e11245f289a4be09a79b19a277e8bf1c109b8e430181ee1b3c4fc3d`.
+- Estrutura ZIP conferida, incluindo AndroidManifest.xml e classes.dex. Instalação, assinatura validada no aparelho e interação nativa continuam pendentes.
+- Prévia HTML do pedido conferida visualmente no Chrome com dados fictícios, três logos, colunas de bonificação e resumo. Não equivale à validação do PDF gerado no Android.
+- Primeiro envio ao EAS falhou por conexão interrompida (ECONNRESET), antes de iniciar build; reenvio concluído com sucesso.
+- Consulta após build/updates: plano Free, 3/15 compilações Android utilizadas, cobrança estimada 0 centavos. Nenhum serviço pago habilitado.
+- Estado: implementação e compilações concluídas; versão interna pronta para validação no aparelho. Sem publicação em produção. As limitações de testes e os alertas moderados de dependências permanecem descritos acima.
+Em 09/11/2026, o APK e o arquivo SHA256SUMS.txt foram conferidos pelos respectivos hashes e publicados na [versão de testes 1.1 do GitHub](https://github.com/Tile26/AgroTileRepresentacoes/releases/tag/v1.1.0-preview.1). [Baixar APK](https://github.com/Tile26/AgroTileRepresentacoes/releases/download/v1.1.0-preview.1/AgroTileRepresentacoes-1.1.0-teste.apk).
