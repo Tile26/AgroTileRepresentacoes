@@ -1,3 +1,4 @@
+import {validateBarcodes} from './barcode.js';
 import {migrate} from './domain.js';
 import {validDate} from './business.js';
 export const storageKey = 'agrotile-v1';
@@ -38,6 +39,7 @@ export function validateState(input) {
         if (!ids.products.has(e.productId) || !ids.categories.has(e.categoryId) || !validDate(e.date) || !timestamp(e.registeredAt) || ![e.quantity,e.cost,e.price,e.costTotal,e.salePotential].every(integer) || e.quantity < 1 || e.costTotal !== e.cost*e.quantity || e.salePotential !== e.price*e.quantity || e.profitPotential !== e.salePotential-e.costTotal || (e.reversedAt && !timestamp(e.reversedAt))) throw Error('Entrada inválida.');
     }
     if (!state.settings || typeof state.settings !== 'object' || Array.isArray(state.settings)) throw Error('Configurações inválidas.');
+    validateBarcodes(state);
     return state;
 }
 // The live snapshot changes only after the single persistent write succeeds.

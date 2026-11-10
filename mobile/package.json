@@ -14,6 +14,7 @@
     "expo-sharing": "~58.0.21",
     "expo-status-bar": "~58.0.4",
     "expo-updates": "~58.0.20",
+    "jsbarcode": "3.12.1",
     "react": "19.3.0",
     "react-native": "0.88.1"
   },
@@ -22,9 +23,9 @@
     "android": "expo start --android",
     "ios": "expo start --ios",
     "web": "expo start --web",
-    "lint": "eslint App.js domain.js search.js business.js storage.js backup.js OperationsUI.js --rule no-undef:error",
-    "test": "node domain.test.mjs && node search.test.mjs && node features.test.mjs",
-    "typecheck": "tsc --noEmit --allowJs --jsx react-jsx --skipLibCheck --resolveJsonModule --esModuleInterop App.js domain.js search.js business.js storage.js backup.js OperationsUI.js"
+    "lint": "eslint App.js domain.js search.js business.js storage.js backup.js OperationsUI.js --rule no-undef:error barcode.js labelSheet.js LabelScreen.js",
+    "test": "node domain.test.mjs && node search.test.mjs && node features.test.mjs && node labels.test.mjs",
+    "typecheck": "tsc --noEmit --allowJs --jsx react-jsx --skipLibCheck --resolveJsonModule --esModuleInterop App.js domain.js search.js business.js storage.js backup.js OperationsUI.js barcode.js labelSheet.js LabelScreen.js"
   },
   "private": true,
   "devDependencies": {

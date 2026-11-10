@@ -5,7 +5,7 @@ export function searchEntries(entries, query, alphabetical = true) {
     const terms = normalizeSearch(query).split(/\s+/).filter(Boolean);
     const found = entries.filter(entry => {
         const text = normalizeSearch([
-            entry.id, entry.reference, entry.barcode, entry.name, entry.legalName, entry.tradeName, entry.document,
+            entry.id, entry.internalBarcode, entry.internalBarcode?.slice(-4), entry.reference, entry.barcode, entry.name, entry.legalName, entry.tradeName, entry.document,
             entry.phone, entry.city, entry.state, entry.categoryName, entry.clientName,
             String(entry.document ?? '').replace(/\D/g, ''),
             String(entry.phone ?? '').replace(/\D/g, ''),

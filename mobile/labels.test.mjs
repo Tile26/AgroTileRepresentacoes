@@ -1,0 +1,14 @@
+import assert from 'node:assert/strict';
+import {assignBarcodes,internalBarcode,validateBarcodes} from './barcode.js';
+import {sheetHtml,sheetLayout} from './labelSheet.js';
+const state={settings:{},categories:[{id:1,generateBarcode:false}],products:[{id:1,categoryId:1,name:'A&B',reference:'0005',barcode:'7890000000017'},{id:2,categoryId:1}]};
+assignBarcodes(state,1);assert.equal(state.products[0].internalBarcode,undefined);
+state.categories[0].generateBarcode=true;assignBarcodes(state,1);
+assert.equal(internalBarcode(1),'7890000000017');assert.equal(state.products[0].internalBarcode,internalBarcode(2));
+const saved=JSON.stringify(state);assignBarcodes(state,1);assert.equal(JSON.stringify(state),saved);
+validateBarcodes(state);const p=state.products.pop();state.products.push({id:3,categoryId:1});assignBarcodes(state,1);assert.notEqual(state.products[1].internalBarcode,p.internalBarcode);
+assert.throws(()=>internalBarcode(1000));
+const l={columns:3,rows:8,width:60,height:30,left:10,top:9,gapX:2,gapY:3};
+const html=sheetHtml(state.products[0],l);assert.equal(html.match(/<section /g).length,24);assert.equal(html.match(/<svg /g).length,24);assert.ok(html.includes('A&amp;B'));assert.ok(html.includes('Ref. 0005'));
+assert.throws(()=>sheetLayout({...l,width:90}));assert.throws(()=>sheetHtml({name:'Sem código'},l));
+console.log('Numeração, estabilidade, colisões e folha A4 verificadas.');

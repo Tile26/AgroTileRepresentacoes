@@ -1,3 +1,5 @@
+import {assignBarcodes} from './barcode';
+import {LabelScreen} from './LabelScreen';
 import React, {useState, useEffect, useRef} from 'react';
 import {Alert, SafeAreaView, ScrollView, View, Text, TextInput, Pressable, Modal, FlatList, StyleSheet} from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -11,7 +13,7 @@ import representedBrands from './assets/represented-brands.json';
 import {searchEntries} from './search';
 import {empty, money, numeric, change, saveOrder, remove, total, report, dashboard, customerActivity, packingList, bonuses} from './domain';
 
-const labels = {home:'Início',settings:'Configurações',entries:'Entrada',clients:'Clientes',categories:'Categorias',products:'Produtos',orders:'Pedidos',billing:'Faturamento',expenses:'Despesas',reports:'Relatórios',packing:'Romaneio'};
+const labels = {home:'Início',settings:'Configurações',entries:'Entrada',labels:'Imprimir Etiqueta',clients:'Clientes',categories:'Categorias',products:'Produtos',orders:'Pedidos',billing:'Faturamento',expenses:'Despesas',reports:'Relatórios',packing:'Romaneio'};
 const storageKey = 'agrotile-v1';
 const seller = {
     name: 'Dionatan Stadler de Freitas',
@@ -65,6 +67,7 @@ function Select({label,entries,value,onChange}) {
                         <Text style={s.title}>{item.name}</Text>
                         {!!item.document && <Text style={s.muted}>{item.document}</Text>}
                         {!!item.reference && <Text style={s.muted}>Referência · {item.reference}</Text>}
+                        {!!item.internalBarcode && <Text style={s.muted}>Código do produto · {item.internalBarcode.slice(-4)}</Text>}
                         {!!item.barcode && <Text style={s.muted}>Código · {item.barcode}</Text>}
                         {!!item.city && <Text style={s.muted}>{item.city} {item.state}</Text>}
                         {!!item.phone && <Text style={s.muted}>{item.phone}</Text>}
@@ -168,6 +171,8 @@ export default function App() {
             const index = state[collection].findIndex(r => r.id === record.id);
             if (index < 0) state[collection].push({...record,id:state.nextId++});
             else state[collection][index] = record;
+            if (collection === 'products') assignBarcodes(state,record.categoryId);
+            if (collection === 'categories') assignBarcodes(state,state[collection][index < 0 ? state[collection].length - 1 : index].id);
         });
     }
     async function pdf(order) {
@@ -211,7 +216,7 @@ export default function App() {
     }
     if (!data) return <SafeAreaView><Text>Carregando AgroTile…</Text></SafeAreaView>;
     const collection = tab === 'billing' ? 'orders' : tab;
-    const records = ['home','settings','entries','reports','packing'].includes(tab) ? [] : data[collection].filter(r => tab === 'orders' ? r.final === undefined : tab === 'billing' ? r.final !== undefined : true);
+    const records = ['home','settings','labels','entries','reports','packing'].includes(tab) ? [] : data[collection].filter(r => tab === 'orders' ? r.final === undefined : tab === 'billing' ? r.final !== undefined : true);
     const query = search.trim();
     const categoryNames = new Map(data.categories.map(category => [category.id,category.name]));
     const clientNames = new Map(data.clients.map(client => [client.id,client.name]));
@@ -275,9 +280,10 @@ export default function App() {
         <Text style={s.heading}>{labels[tab]}</Text>
         {tab === 'products' && <Button title="Entrada" onPress={() => setTab('entries')}/>}
         {tab === 'entries' && <><Button title="Voltar para Produtos" secondary onPress={() => setTab('products')}/><EntryScreen data={data} commit={commit} openProduct={() => open('products')} Button={Button} Field={Field} Select={Select} styles={s}/></>}
+        {tab === 'labels' && <LabelScreen data={data} commit={commit} products={productOptions} Button={Button} Select={Select} Field={Field} styles={s}/>}
         {tab === 'settings' && <BackupScreen data={data} restore={restore} Button={Button} styles={s}/>}
-        {!['home','settings','entries','reports','billing','packing'].includes(tab) && <Button title="Adicionar" onPress={() => open(tab)}/>}
-        {!['home','settings','entries','reports','packing'].includes(tab) && <View>
+        {!['home','settings','labels','entries','reports','billing','packing'].includes(tab) && <Button title="Adicionar" onPress={() => open(tab)}/>}
+        {!['home','settings','labels','entries','reports','packing'].includes(tab) && <View>
             <TextInput accessibilityLabel="Buscar registros" placeholder="Nome, referência, código, CPF/CNPJ…" placeholderTextColor="#6c7d73" style={s.search} value={search} onChangeText={value => {setSearch(value);setVisibleCount(20);}}/>
             {tab === 'products' && <Select label="Filtrar por categoria" entries={[{id:null,name:'Todas as categorias'},...data.categories]} value={productCategory} onChange={id => {setProductCategory(id);setVisibleCount(20);}}/>}
             <Text style={s.resultCount}>Mostrando {Math.min(visibleCount,visibleRecords.length)} de {visibleRecords.length} registro(s){['clients','products','categories'].includes(tab) ? ' · A–Z' : ''}</Text>
@@ -295,7 +301,7 @@ export default function App() {
                 {!!record.city && <Text>{record.city} {record.state}</Text>}
                 {record.needsInvoice && <Text>Solicita nota fiscal</Text>}
             </View>}
-            {collection === 'products' && <Text>{record.stock} unidades · Venda {money(record.price)} · Custo {money(record.cost)}{'\n'}Referência {record.reference || '—'} · Código {record.barcode || '—'}</Text>}
+            {collection === 'products' && <Text>{record.stock} unidades · Venda {money(record.price)} · Custo {money(record.cost)}{'\n'}Referência {record.reference || '—'} · Código {record.internalBarcode?.slice(-4) || record.barcode || '—'}</Text>}
             {collection === 'expenses' && <Text>{money(record.amount)} · {new Date(record.date).toLocaleDateString('pt-BR')}</Text>}
             <View style={s.row}><Button title="Editar" secondary onPress={() => open(collection,record)}/>{tab === 'billing' && <Button title="Editar pagamento" onPress={() => open('billing',record)}/>}<Button title="Excluir" onPress={() => drop(collection,record.id)}/>{collection === 'clients' && <Button title="Histórico" secondary onPress={() => setHistory(record.id)}/>}</View>
             {history === record.id && collection === 'clients' && data.orders.filter(o => o.clientId === record.id).map(o => <Text key={o.id}>#{o.id} · {new Date(o.date).toLocaleDateString('pt-BR')} · {o.final === undefined ? 'Pedido' : 'Faturado'} · {money(o.final ?? total(o))}</Text>)}
@@ -330,11 +336,13 @@ export default function App() {
             <Select label="Solicita nota fiscal?" entries={[{id:false,name:'Não'},{id:true,name:'Sim'}]} value={draft.needsInvoice ?? false} onChange={v => update('needsInvoice',v)}/>
             {clientFields.map(([key,label]) => <Field key={key} label={label} value={draft[key]} onChangeText={v => update(key,v)}/>)}
         </>}
+        {editor?.collection === 'categories' && <Select label="Gerar código de barras" entries={[{id:false,name:'Não'},{id:true,name:'Sim'}]} value={draft.generateBarcode ?? false} onChange={v => update('generateBarcode',v)}/>}
         {editor?.collection === 'categories' && <Select label="Gerar Bonificação" entries={[{id:false,name:'Desativado'},{id:true,name:'Ativado'}]} value={draft.bonusEnabled ?? false} onChange={v => update('bonusEnabled',v)}/>}
         {editor?.collection === 'products' && <>
             <Select label="Categoria" entries={data.categories} value={draft.categoryId} onChange={v => update('categoryId',v)}/>
             <Field label="Referência" value={draft.reference} onChangeText={v => update('reference',v)}/>
-            <Field label="Código de Barras" value={draft.barcode} onChangeText={v => update('barcode',v)}/>
+            {!!draft.internalBarcode && <Text>Código do produto · {draft.internalBarcode.slice(-4)} · {draft.internalBarcode}</Text>}
+            <Field label="Código de barras do fornecedor" value={draft.barcode} onChangeText={v => update('barcode',v)}/>
             <Field label="Estoque disponível" numeric value={draft.stock} onChangeText={v => update('stock',v)}/>
             <PricingFields draft={draft} setDraft={next => setEditor(old => ({...old,draft:next}))} Field={Field} Select={Select}/>
         </>}
