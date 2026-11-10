@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import {assignBarcodes,internalBarcode,validateBarcodes} from './barcode.js';
-import {sheetHtml,sheetLayout} from './labelSheet.js';
+import {sheetHtml,sheetLayout,iguacuLayout} from './labelSheet.js';
 const state={settings:{},categories:[{id:1,generateBarcode:false}],products:[{id:1,categoryId:1,name:'A&B',reference:'0005',barcode:'7890000000017'},{id:2,categoryId:1}]};
 assignBarcodes(state,1);assert.equal(state.products[0].internalBarcode,undefined);
 state.categories[0].generateBarcode=true;assignBarcodes(state,1);
@@ -12,3 +12,9 @@ const l={columns:3,rows:8,width:60,height:30,left:10,top:9,gapX:2,gapY:3};
 const html=sheetHtml(state.products[0],l);assert.equal(html.match(/<section /g).length,24);assert.equal(html.match(/<svg /g).length,24);assert.ok(html.includes('A&amp;B'));assert.ok(html.includes('Ref. 0005'));
 assert.throws(()=>sheetLayout({...l,width:90}));assert.throws(()=>sheetHtml({name:'Sem código'},l));
 console.log('Numeração, estabilidade, colisões e folha A4 verificadas.');
+
+const branded=sheetHtml({name:'Chapéu <teste>',reference:'X-001',internalBarcode:internalBarcode(1)},iguacuLayout,'iguacu');
+assert.equal(branded.match(/<section /g).length,21);
+assert.equal(branded.match(/Chapéu &lt;teste&gt; Ref. X-001/g).length,21);
+assert.equal(branded.match(/>7890000000017</g).length,21);
+assert.ok(branded.includes('data:image/png;base64,'));
