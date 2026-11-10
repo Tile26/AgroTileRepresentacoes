@@ -11,7 +11,7 @@ import representedBrands from './assets/represented-brands.json';
 import {searchEntries} from './search';
 import {empty, money, numeric, change, saveOrder, remove, total, report, dashboard, customerActivity, packingList, bonuses} from './domain';
 
-const labels = {home:'Início',settings:'Configurações',entries:'Entradas',clients:'Clientes',categories:'Categorias',products:'Produtos',orders:'Pedidos',billing:'Faturamento',expenses:'Despesas',reports:'Relatórios',packing:'Romaneio'};
+const labels = {home:'Início',settings:'Configurações',entries:'Entrada',clients:'Clientes',categories:'Categorias',products:'Produtos',orders:'Pedidos',billing:'Faturamento',expenses:'Despesas',reports:'Relatórios',packing:'Romaneio'};
 const storageKey = 'agrotile-v1';
 const seller = {
     name: 'Dionatan Stadler de Freitas',
@@ -271,9 +271,9 @@ export default function App() {
         </View>
         </>}
         <Text style={s.eyebrow}>AGROTILE · GERENCIAR</Text>
-        <View style={s.menu}>{Object.entries(labels).filter(([key]) => key !== 'entries').map(([key,label]) => <Pressable key={key} accessibilityRole="button" accessibilityState={{selected:tab === key}} style={[s.menuItem,tab === key && s.menuSelected]} onPress={() => {setTab(key);setHistory(null);setSearch('');setVisibleCount(20);setProductCategory(null);}}><Text style={[s.menuText,tab === key && s.menuSelectedText]}>{label}</Text></Pressable>)}</View>
+        <View style={s.menu}>{Object.entries(labels).map(([key,label]) => <Pressable key={key} accessibilityRole="button" accessibilityState={{selected:tab === key}} style={[s.menuItem,tab === key && s.menuSelected]} onPress={() => {setTab(key);setHistory(null);setSearch('');setVisibleCount(20);setProductCategory(null);}}><Text style={[s.menuText,tab === key && s.menuSelectedText]}>{label}</Text></Pressable>)}</View>
         <Text style={s.heading}>{labels[tab]}</Text>
-        {tab === 'products' && <Button title="Entrada de produtos e relatórios" onPress={() => setTab('entries')}/>}
+        {tab === 'products' && <Button title="Entrada" onPress={() => setTab('entries')}/>}
         {tab === 'entries' && <><Button title="Voltar para Produtos" secondary onPress={() => setTab('products')}/><EntryScreen data={data} commit={commit} openProduct={() => open('products')} Button={Button} Field={Field} Select={Select} styles={s}/></>}
         {tab === 'settings' && <BackupScreen data={data} restore={restore} Button={Button} styles={s}/>}
         {!['home','settings','entries','reports','billing','packing'].includes(tab) && <Button title="Adicionar" onPress={() => open(tab)}/>}

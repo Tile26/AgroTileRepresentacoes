@@ -7,7 +7,7 @@ import * as Sharing from 'expo-sharing';
 import * as Print from 'expo-print';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import {money,numeric} from './domain';
-import {percent,pricingDraft,localDate,dateRange,validDate,saveEntry,reverseEntry,entryReport,entriesCsv} from './business';
+import {percent,pricingDraft,localDate,dateRange,validDate,receiptAmounts,saveReceipt,reverseEntry,entryReport,entriesCsv} from './business';
 import {encryptBackup,decryptBackup} from './backup';
 const esc = v => String(v ?? '').replace(/[&<>"']/g,c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 export function PricingFields({draft,setDraft,Field,Select}) {
@@ -32,30 +32,45 @@ export function EntryScreen({data,commit,openProduct,Button,Field,Select,styles:
     const options = data.products.map(p => ({...p,categoryName:data.categories.find(c => c.id===p.categoryId)?.name}));
     const valid = validDate(filter.from) && validDate(filter.to) && filter.from <= filter.to;
     const report = entryReport(data,valid ? filter : {...filter,from:'z',to:''});
-    let totals = null;
-    try { const q=numeric(draft.quantity),c=numeric(draft.cost,true),p=numeric(draft.price,true); totals={cost:q*c,sale:q*p,profit:q*(p-c),margin:percent(c,p)}; } catch { /* incomplete input */ }
-    const selectProduct = id => {const p=data.products.find(p=>p.id===id);setDraft({...draft,productId:id,cost:String(p.cost/100),price:String(p.price/100),pricingMethod:p.pricingMethod,rate:percent(p.cost,p.price,p.pricingMethod)?.toFixed(2) ?? '',pricingError:''});};
-    const submit = async options => {
-        if (draft.pricingError) return Alert.alert('Confira os preços',draft.pricingError);
-        if (await commit(state => saveEntry(state,draft,options))) setDraft(blank());
-    };
-    const save = () => {
+    const [lines,setLines] = useState([]);
+    const [date,setDate] = useState(localDate);
+    const [editing,setEditing] = useState(null);
+    const product = data.products.find(p => p.id === draft.productId);
+    let amount = null;
+    try { if (product) amount = receiptAmounts(draft); } catch { /* field still being entered */ }
+    const listed = lines.filter(line => line.productId !== editing);
+    const amounts = listed.map(receiptAmounts);
+    if (amount) amounts.push(amount);
+    const costTotal = amounts.reduce((sum,item) => sum + item.costTotal,0);
+    const salePotential = amounts.reduce((sum,item) => sum + item.salePotential,0);
+    function selectProduct(id) {
+        const p = data.products.find(item => item.id === id);
+        setDraft({...blank(),productId:id,cost:String(p.cost/100),price:String(p.price/100),pricingMethod:p.pricingMethod,rate:percent(p.cost,p.price,p.pricingMethod)?.toFixed(2) ?? ''});
+    }
+    function clearItem() { setDraft(blank()); setEditing(null); }
+    function prepareLine(then) {
         try {
-            const product=data.products.find(p=>p.id===draft.productId);
             if (!product) throw Error('Selecione um produto.');
-            const cost=numeric(draft.cost,true);
-            if (cost === product.cost) return submit({});
-            Alert.alert('Deseja atualizar o preço de custo deste produto?','A entrada sempre preserva o custo informado. O preço de venda só muda se você escolher atualizar ambos.',[
-                {text:'Cancelar',style:'cancel'},
-                {text:'Manter custo cadastrado',onPress:()=>submit({})},
-                {text:'Atualizar custo cadastrado',onPress:()=>Alert.alert('Preço de venda','Manter o preço atual ou aplicar o preço calculado e exibido nesta entrada?',[
-                    {text:'Cancelar',style:'cancel'},
-                    {text:'Manter venda',onPress:()=>submit({updateCost:true})},
-                    {text:'Aplicar custo e venda',onPress:()=>submit({updateCost:true,updatePrice:true})},
-                ])},
+            receiptAmounts(draft);
+            if (listed.some(line => line.productId === product.id)) throw Error('Este produto já está na entrada. Use Editar para ajustar a quantidade.');
+            if (numeric(draft.cost,true) !== product.cost && typeof draft.updateCost !== 'boolean') throw Error('Escolha se deseja atualizar o custo cadastrado.');
+            const accept = updatePrice => then([...listed,{...draft,productName:product.name,updateCost:draft.updateCost === true,updatePrice}]);
+            Alert.alert('Deseja alterar o valor de venda para este produto?',product.name + '\nPreço cadastrado: '+money(product.price)+'\nPreço informado: '+money(numeric(draft.price,true)),[
+                {text:'Cancelar',style:'cancel'},{text:'Não',onPress:()=>accept(false)},{text:'Sim',onPress:()=>accept(true)}
             ]);
-        } catch(e) {Alert.alert('Entrada',e.message);}
-    };
+        } catch(error) { Alert.alert('Confira o produto',error.message); }
+    }
+    async function finish(items) {
+        if (await commit(state => saveReceipt(state,date,items))) {
+            setLines([]); clearItem(); setDate(localDate());
+            Alert.alert('Entrada salva','O estoque foi atualizado.');
+        }
+    }
+    function save() {
+        if (!validDate(date)) return Alert.alert('Confira a data','Use o formato AAAA-MM-DD.');
+        if (product) prepareLine(finish);
+        else finish(lines);
+    }
     async function exportReport(format) {
         try {
             if (!valid) throw Error('Confira o período.');
@@ -69,14 +84,27 @@ export function EntryScreen({data,commit,openProduct,Button,Field,Select,styles:
         } catch(e) {Alert.alert('Exportar relatório',e.message);}
     }
     return <>
-        <View style={s.card}><Text style={s.title}>Registrar entrada</Text>
+        <View style={s.card}><Text style={s.title}>Recebimento de mercadorias</Text>
+            <Field label="Data da entrada (AAAA-MM-DD)" value={date} onChangeText={setDate}/>
             <Select label="Produto · nome, referência ou código" entries={options} value={draft.productId} onChange={selectProduct}/>
-            <Button title="Cadastrar novo produto" secondary onPress={openProduct}/><Text>O lançamento fica preenchido enquanto cadastra o produto. Depois, selecione-o acima. Para receber por esta entrada, cadastre estoque inicial zero.</Text>
-            <Field label="Data (AAAA-MM-DD)" value={draft.date} onChangeText={v=>setDraft({...draft,date:v})}/>
-            <Field label="Quantidade recebida" numeric value={draft.quantity} onChangeText={v=>setDraft({...draft,quantity:v})}/>
-            <PricingFields draft={draft} setDraft={setDraft} Field={Field} Select={Select}/>
-            {totals && <Text>Custo total {money(totals.cost)}{ '\n'}Venda potencial {money(totals.sale)}{ '\n'}Lucro bruto potencial {money(totals.profit)}{ '\n'}Margem bruta {totals.margin?.toFixed(2) ?? '—'}%</Text>}
-            <Button title="Registrar entrada e somar estoque" onPress={save}/>
+            <Button title="Cadastrar novo produto" secondary onPress={openProduct}/>
+            <Text>Para um produto novo, deixe o estoque inicial em zero e lance a quantidade aqui.</Text>
+            {product && <>
+                <Field label="Quantidade recebida" numeric value={draft.quantity} onChangeText={v=>setDraft({...draft,quantity:v})}/>
+                <PricingFields draft={draft} setDraft={setDraft} Field={Field} Select={Select}/>
+                {Number(String(draft.cost).replace(',','.')).toFixed(2) !== (product.cost/100).toFixed(2) && <Select label="Deseja atualizar o custo cadastrado?" entries={[{id:true,name:'Sim'},{id:false,name:'Não'}]} value={draft.updateCost} onChange={v=>setDraft({...draft,updateCost:v})}/>}
+                <Button title={editing ? 'Confirmar item editado' : 'Adicionar à entrada'} onPress={()=>prepareLine(items=>{setLines(items);clearItem();})}/>
+                <Button title="Cancelar edição do item" secondary onPress={clearItem}/>
+            </>}
+            <Text style={s.title}>Itens da entrada</Text>
+            {listed.map(line=><View key={line.productId} style={s.card}><Text>{line.productName} · {line.quantity} un. · {money(receiptAmounts(line).costTotal)}</Text>
+                <Text>Preço de venda no cadastro: {line.updatePrice ? 'aplicar '+money(numeric(line.price,true)) : 'manter atual'}</Text>
+                <Button title="Editar item" secondary onPress={()=>{if(product)return Alert.alert('Conclua o item atual','Adicione ou cancele o item antes de editar outro.');setEditing(line.productId);setDraft({...line});}}/>
+                <Button title="Remover item" secondary onPress={()=>Alert.alert('Remover este produto da entrada?',line.productName,[{text:'Cancelar'},{text:'Remover',onPress:()=>setLines(lines.filter(i=>i.productId!==line.productId))}])}/>
+            </View>)}
+            <Text style={s.title}>Valor da entrada · {money(costTotal)}</Text>
+            <Text>Venda potencial · {money(salePotential)}{'\n'}Lucro bruto potencial · {money(salePotential-costTotal)}</Text>
+            <Button title="Salvar entrada e atualizar estoque" onPress={save}/>
         </View>
         <View style={s.card}><Text style={s.title}>Relatório de entradas</Text><Text>Lucro potencial das mercadorias recebidas. O lucro realizado continua nos Relatórios de vendas.</Text>
             <Select label="Período" value={period} entries={[{id:'today',name:'Hoje'},{id:'yesterday',name:'Ontem'},{id:'week',name:'Últimos 7 dias'},{id:'month',name:'Mês atual'},{id:'previous',name:'Mês anterior'},{id:'custom',name:'Período personalizado'}]} onChange={v=>{setPeriod(v);setCount(20);if(v!=='custom')setFilter({...filter,...dateRange(v)});}}/>
@@ -92,7 +120,7 @@ export function EntryScreen({data,commit,openProduct,Button,Field,Select,styles:
         </View>
         <Text style={s.title}>Histórico filtrado por data</Text>
         <Field label="Motivo para eventual estorno" value={reason} onChangeText={setReason}/>
-        {report.rows.slice(0,count).map(e=><View key={e.id} style={s.card}><Text>#{e.id} · {e.date} · {e.productName}{'\n'}{e.quantity} unidades · Custo {money(e.costTotal)} · Venda potencial {money(e.salePotential)}{'\n'}Registrado em {new Date(e.registeredAt).toLocaleString('pt-BR')}</Text>
+        {report.rows.slice(0,count).map(e=><View key={e.id} style={s.card}><Text>Entrada #{e.receiptId ?? e.id} · {e.date} · {e.productName}{'\n'}{e.quantity} unidades · Custo {money(e.costTotal)} · Venda potencial {money(e.salePotential)}{'\n'}Registrado em {new Date(e.registeredAt).toLocaleString('pt-BR')}</Text>
             <Button title="Estornar entrada" secondary onPress={()=>Alert.alert('Confirmar estorno','Retirar '+e.quantity+' unidades do estoque? O histórico será preservado. Os preços atuais do cadastro serão mantidos.',[{text:'Cancelar',style:'cancel'},{text:'Estornar',style:'destructive',onPress:()=>commit(state=>reverseEntry(state,e.id,reason))}])}/>
         </View>)}
         {report.rows.length>count && <Button title="Mostrar mais entradas" onPress={()=>setCount(count+20)}/>}

@@ -81,3 +81,34 @@ export function entriesCsv(report) {
         ...report.rows.map(e => [e.date,e.productName,e.categoryName,e.quantity,...[e.cost,e.price,e.costTotal,e.salePotential,e.profitPotential].map(n => (n/100).toFixed(2).replace('.',','))])];
     return '\ufeff' + rows.map(row => row.map(csvCell).join(';')).join('\r\n');
 }
+
+export function receiptAmounts(draft) {
+    if (draft.pricingError) throw Error(draft.pricingError);
+    const quantity = numeric(draft.quantity);
+    const cost = numeric(draft.cost,true);
+    const price = numeric(draft.price,true);
+    if (quantity < 1) throw Error('Informe a quantidade recebida.');
+    const costTotal = quantity * cost;
+    const salePotential = quantity * price;
+    if (![costTotal,salePotential].every(Number.isSafeInteger)) throw Error('Valor muito alto.');
+    return {quantity,costTotal,salePotential,profitPotential:salePotential-costTotal};
+}
+
+export function saveReceipt(state,date,lines) {
+    if (!validDate(date)) throw Error('Confira a data da entrada.');
+    if (!lines.length) throw Error('Inclua pelo menos um produto.');
+    const ids = new Set();
+    const receiptId = state.nextId;
+    for (const line of lines) {
+        const product = state.products.find(p => p.id === line.productId);
+        if (!product || ids.has(product.id)) throw Error('Confira os produtos da entrada.');
+        ids.add(product.id);
+        const amount = receiptAmounts(line);
+        if (!Number.isSafeInteger(product.stock + amount.quantity)) throw Error('Estoque muito alto.');
+        if (typeof line.updatePrice !== 'boolean' || typeof line.updateCost !== 'boolean') throw Error('Confirme as opções de preço.');
+    }
+    for (const line of lines) {
+        const record = saveEntry(state,{...line,date},line);
+        record.receiptId = receiptId;
+    }
+}

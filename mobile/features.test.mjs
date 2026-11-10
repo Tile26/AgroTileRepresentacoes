@@ -76,3 +76,24 @@ await assert.rejects(()=>decryptBackup(JSON.stringify({...JSON.parse(encrypted),
 await assert.rejects(()=>decryptBackup('arquivo inválido',password));
 await assert.rejects(()=>encryptBackup(entries,'curta',async size=>new Uint8Array(size)));
 console.log('Backup autenticado, senha errada, adulteração, versão, relações e falhas de armazenamento: OK');
+import {saveReceipt} from './business.js';
+const receiptState=validateState(base());
+receiptState.products.push({...receiptState.products[0],id:4,name:'Segundo'});
+receiptState.nextId=5;
+const receiptLines=[
+    {productId:3,quantity:'2',cost:'85',price:'130',updatePrice:true,updateCost:false},
+    {productId:4,quantity:'3',cost:'80',price:'150',updatePrice:false,updateCost:true}
+];
+const originalReceipt=structuredClone(receiptState);
+assert.throws(()=>saveReceipt(receiptState,'2026-11-10',[receiptLines[0],{...receiptLines[1],quantity:'0'}]));
+assert.deepEqual(receiptState,originalReceipt);
+saveReceipt(receiptState,'2026-11-10',receiptLines);
+assert.deepEqual(receiptState.products.map(p=>[p.stock,p.cost,p.price]),[[102,8500,13000],[103,8000,12000]]);
+assert.equal(new Set(receiptState.entries.map(e=>e.receiptId)).size,1);
+assert.equal(receiptState.entries[1].date,'2026-11-10');
+const receiptSummary=entryReport(receiptState,{from:'2026-11-10',to:'2026-11-10'});
+assert.equal(receiptSummary.cost,41000);
+assert.equal(receiptSummary.sale,71000);
+assert.equal(receiptSummary.profit,30000);
+assert.deepEqual(validateState(receiptState),receiptState);
+console.log('Entrada conjunta, data, escolhas independentes de preço e custo, totais e estoque: OK');
