@@ -23,9 +23,9 @@
     "android": "expo start --android",
     "ios": "expo start --ios",
     "web": "expo start --web",
-    "lint": "eslint App.js domain.js search.js business.js storage.js backup.js OperationsUI.js --rule no-undef:error barcode.js labelSheet.js LabelScreen.js",
+    "lint": "eslint App.js domain.js search.js business.js storage.js backup.js OperationsUI.js --rule no-undef:error barcode.js labelSheet.js LabelScreen.js KeyboardForm.js",
     "test": "node domain.test.mjs && node search.test.mjs && node features.test.mjs && node labels.test.mjs",
-    "typecheck": "tsc --noEmit --allowJs --jsx react-jsx --skipLibCheck --resolveJsonModule --esModuleInterop App.js domain.js search.js business.js storage.js backup.js OperationsUI.js barcode.js labelSheet.js LabelScreen.js"
+    "typecheck": "tsc --noEmit --allowJs --jsx react-jsx --skipLibCheck --resolveJsonModule --esModuleInterop App.js domain.js search.js business.js storage.js backup.js OperationsUI.js barcode.js labelSheet.js LabelScreen.js KeyboardForm.js"
   },
   "private": true,
   "devDependencies": {

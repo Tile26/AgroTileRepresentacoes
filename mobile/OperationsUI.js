@@ -1,5 +1,6 @@
+import {KeyboardInput as TextInput} from './KeyboardForm';
 import React, {useState, useRef} from 'react';
-import {View,Text,TextInput,Alert} from 'react-native';
+import {View,Text,Alert} from 'react-native';
 import {File,Paths} from 'expo-file-system';
 import * as DocumentPicker from 'expo-document-picker';
 import * as Crypto from 'expo-crypto';

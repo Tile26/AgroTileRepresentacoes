@@ -1,7 +1,8 @@
+import {KeyboardScrollView, KeyboardInput as TextInput, KeyboardArea} from './KeyboardForm';
 import {assignBarcodes} from './barcode';
 import {LabelScreen} from './LabelScreen';
 import React, {useState, useEffect, useRef} from 'react';
-import {Alert, SafeAreaView, ScrollView, View, Text, TextInput, Pressable, Modal, FlatList, StyleSheet} from 'react-native';
+import {Alert, SafeAreaView, View, Text, Pressable, Modal, FlatList, StyleSheet} from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
@@ -57,7 +58,7 @@ function Select({label,entries,value,onChange}) {
             <Text style={s.selectValue}>{selected?.name ?? 'Toque para buscar e selecionar'}</Text><Text style={s.muted}>Buscar ›</Text>
         </Pressable>
         <Modal visible={visible} animationType="slide" onRequestClose={() => setVisible(false)}>
-            <SafeAreaView style={s.page}><View style={s.pickerContainer}>
+            <SafeAreaView style={s.page}><KeyboardArea><View style={s.pickerContainer}>
                 <Text style={s.heading}>{label}</Text>
                 <TextInput accessibilityLabel={'Buscar ' + label} placeholder="Nome, referência, código ou documento…" placeholderTextColor="#6c7d73" style={s.search} value={query} onChangeText={setQuery} autoCorrect={false}/>
                 <Text style={s.resultCount}>{options.length} opção(ões) · ordem alfabética</Text>
@@ -74,7 +75,7 @@ function Select({label,entries,value,onChange}) {
                         {item.stock !== undefined && <Text style={s.muted}>{item.categoryName} · Estoque {item.stock} · {money(item.price)}</Text>}
                     </Pressable>}/>
                 <Button title="Fechar seleção" secondary onPress={() => setVisible(false)}/>
-            </View></SafeAreaView>
+            </View></KeyboardArea></SafeAreaView>
         </Modal>
     </View>;
 }
@@ -241,7 +242,7 @@ export default function App() {
     const weekEnd = new Date(weekStart);
     weekEnd.setDate(weekEnd.getDate()+7);
     const weekly = report(data,weekStart.toISOString(),weekEnd.toISOString());
-    return <SafeAreaView style={s.page}><ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={s.content}>
+    return <SafeAreaView style={s.page}><KeyboardScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={s.content}>
         {tab === 'home' && <>
         <View style={s.hero}>
             <View style={s.brandRow}><View style={s.monogram}><Text style={s.monogramText}>AT</Text></View><View><Text style={s.brand}>AgroTile</Text><Text style={s.subtitle}>REPRESENTAÇÕES</Text></View></View>
@@ -257,6 +258,7 @@ export default function App() {
         <Text style={s.heading}>Resumo do mês</Text>
         <View style={s.row}>
             <View style={s.metric}><Text>Valor do estoque</Text><Text style={s.metricValue}>{money(overview.stockValue)}</Text><Text>A preço de custo</Text></View>
+            <View style={s.metric}><Text>Valor de venda do estoque</Text><Text style={s.metricValue}>{money(overview.stockSaleValue)}</Text><Text>Lucro bruto potencial: {money(overview.stockPotentialProfit)}</Text><Text>Margem sobre a venda: {overview.stockMargin === null ? '—' : overview.stockMargin.toLocaleString('pt-BR',{maximumFractionDigits:2}) + '%'}</Text><Text>Antes de descontos e despesas</Text></View>
             <View style={s.metric}><Text>Vendas do mês</Text><Text style={s.metricValue}>{overview.monthlySales}</Text><Text>Pedidos faturados</Text></View>
             <View style={s.metric}><Text>Faturamento do mês</Text><Text style={s.metricValue}>{money(overview.monthlyRevenue)}</Text><Text>Valores finais</Text></View>
             <View style={s.metric}><Text>Clientes cadastrados</Text><Text style={s.metricValue}>{overview.clientCount}</Text></View>
@@ -326,8 +328,8 @@ export default function App() {
             <Text style={s.title}>Estoque a preço de custo</Text><Text>Total · {money(data.products.reduce((sum,p) => sum+p.stock*p.cost,0))}</Text>
             {data.categories.map(c => <Text key={c.id}>{c.name} · {money(data.products.filter(p => p.categoryId === c.id).reduce((sum,p) => sum+p.stock*p.cost,0))}</Text>)}
         </View>}
-    </ScrollView>
-    <Modal visible={!!editor} onRequestClose={() => setEditor(null)} animationType="slide"><SafeAreaView style={s.page}><ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={s.content}>
+    </KeyboardScrollView>
+    <Modal visible={!!editor} onRequestClose={() => setEditor(null)} animationType="slide"><SafeAreaView style={s.page}><KeyboardScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={s.content}>
         <Text style={s.heading}>{labels[editor?.collection]}</Text>
         {editor && !['orders','billing'].includes(editor.collection) && <Field label={editor.collection === 'clients' ? 'Nome de identificação do cliente' : 'Nome / descrição'} value={draft.name} onChangeText={v => update('name',v)}/>}
         {editor?.collection === 'clients' && <>
@@ -367,7 +369,7 @@ export default function App() {
                 } catch(error) { Alert.alert('Verifique os dados',error.message); }
             } else save();
         }}/><Button title="Cancelar" secondary onPress={() => setEditor(null)}/>
-    </ScrollView></SafeAreaView></Modal></SafeAreaView>;
+    </KeyboardScrollView></SafeAreaView></Modal></SafeAreaView>;
 }
 function OrderSummary({draft}) {
     let order;

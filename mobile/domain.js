@@ -67,8 +67,12 @@ export function dashboard(state, now = new Date()) {
     const pending = state.orders.filter(order => order.final === undefined);
     const billed = state.orders.filter(order => order.final !== undefined);
     const monthly = billed.filter(order => order.delivered >= start && order.delivered < end);
+    const stockValue = state.products.reduce((sum, product) => sum + product.stock * product.cost, 0);
+    const stockSaleValue = state.products.reduce((sum, product) => sum + product.stock * product.price, 0);
+    const stockPotentialProfit = stockSaleValue - stockValue;
     return {
-        stockValue: state.products.reduce((sum, product) => sum + product.stock * product.cost, 0),
+        stockValue, stockSaleValue, stockPotentialProfit,
+        stockMargin: stockSaleValue > 0 ? stockPotentialProfit / stockSaleValue * 100 : null,
         clientCount: state.clients.length,
         pendingCount: pending.length,
         pendingValue: pending.reduce((sum, order) => sum + total(order), 0),
